@@ -134,6 +134,18 @@ Real-API tests and demos read `DEEPSEEK_API_KEY`, optional `DEEPSEEK_BASE_URL`, 
 - TODO markers: `FIXME`/`TODO`/`XXX` by urgency ([semantics](docs/development.md)).
 - Files end with exactly one trailing newline; `git diff --cached --check` (pre-commit) gates it.
 
+## File-based plugin development notes
+
+Experience from building external file bundles (`dsh.bundle` patch rows, e.g. `dsh plugin --profile add`), applicable to any Cordis plugin on this harness — read before writing tools, client bundles, or subprocess calls:
+
+- **Tool `parameters` must be a complete JSON Schema** (`{ type: 'object', properties, required }`). The author-map form (`{ device: 'string' }`) passes `register()` and fails only at model-facing validation: `schema must be a JSON Schema of 'type: "object"', got 'type: null'`. Empty parameter lists still need `{ type: 'object', properties: {} }`; output schema may be `{ type: 'object', additionalProperties: true }`.
+- **Activation order is not guaranteed.** Loader applies bundles in import-completion order; a small bundle can apply before its service providers. `ctx.get('slots')` / `ctx.get('subprocess')` captured at apply time can be `undefined` forever. Declare hard dependencies in `inject` (`['tools', 'subprocess', 'webServer']` on Host, `['slots']` on client) and let Cordis defer apply. Without inject: client UI silently missing; tools reporting `subprocess 服务不可用`.
+- **File-based client bundles get no `remote` or `host` builtins** — those exist only for dynamic (cordis-client-runner) packages. A file bundle's factory receives only `require` (React etc.); cross-process data goes through Host `webServer` routes + same-origin `fetch`.
+- **Hand-written client bundles** register via `window.__ModuleLoader__.load({ id, factory })`; the factory MUST end with `return module.exports` or the loader fails with `invalid plugin, received undefined`.
+- **`subprocess.spawn` collected mode can yield exit 0 with empty stdout** (race). Prefer `stdio: { stdout: 'pipe', stderr: 'pipe' }` and collect chunks yourself. Never truncate output before `JSON.parse` — a 2 KB slice of a 3.3 KB catalog fails with `Unexpected end of JSON input`.
+- **Typert manifests are strictly validated**: `model` needs `services` / `events` / `objects` arrays, services need `tags` / `types` / `members`, and invocation codecs must be `{ mode: 'strict', typeSymbol, schema: zod }` (bare `z.any()` is rejected).
+- **Derived display data (device room names, sensor owners) comes from the modeled store, not hardcoded client maps** — hardcoding silently goes stale after any device relocation.
+
 ## Defensive patterns
 
 Read [docs/defensive-patterns.md](docs/defensive-patterns.md) before lifecycle, concurrency, subprocess, or teardown work.
