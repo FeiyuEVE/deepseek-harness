@@ -128,6 +128,13 @@ async function openNativePathWithIntent(
   const env = internals.env ?? process.env
   const wsl = platform === 'linux' && isWsl(internals)
 
+  // Without a display server `xdg-open` falls back to an interactive terminal
+  // picker and never exits, hanging the caller past every timeout. Fail fast
+  // instead, matching `canOpenNativePath`'s headless answer.
+  if (platform === 'linux' && !wsl && !present(env.DISPLAY) && !present(env.WAYLAND_DISPLAY)) {
+    throw new Error('native path opener requires a display server on linux (set DISPLAY or WAYLAND_DISPLAY)')
+  }
+
   if (!wsl && intent === 'default' && BROWSER_DOCUMENTS.has(extname(path).toLowerCase())
     && await openInBrowser(path, signal, platform, run, env)) return
 

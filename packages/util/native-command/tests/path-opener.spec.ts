@@ -37,9 +37,18 @@ describe('native path opener', () => {
   it('uses the Linux desktop association for text documents', async () => {
     const run = vi.fn<PathOpenerRunner>(async () => ({ stdout: '', stderr: '' }))
     await openNativeTextFile('/tmp/settings.yaml', signal(), {
-      platform: 'linux', osRelease: '6.8.0-generic', env: {}, run,
+      platform: 'linux', osRelease: '6.8.0-generic', env: { DISPLAY: ':0' }, run,
     })
     expect(run).toHaveBeenCalledWith('xdg-open', ['/tmp/settings.yaml'], expect.any(AbortSignal))
+  })
+
+  it('fails fast on headless linux instead of spawning xdg-open', async () => {
+    const run = vi.fn<PathOpenerRunner>(async () => ({ stdout: '', stderr: '' }))
+    await expect(openNativePath('/tmp/a.txt', signal(), {
+      platform: 'linux', osRelease: '6.8.0-generic',
+      env: { WSL_DISTRO_NAME: '', WSL_INTEROP: '' }, run,
+    })).rejects.toThrow('requires a display server on linux')
+    expect(run).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -112,7 +121,7 @@ describe('native path opener', () => {
     const run = vi.fn<PathOpenerRunner>(async () => ({ stdout: '', stderr: '' }))
     await openNativePath('/tmp/a.txt', signal(), {
       platform: 'linux', osRelease: '6.8.0-generic',
-      env: { WSL_DISTRO_NAME: '', WSL_INTEROP: '' }, run,
+      env: { WSL_DISTRO_NAME: '', WSL_INTEROP: '', DISPLAY: ':0' }, run,
     })
     expect(run).toHaveBeenCalledWith('xdg-open', ['/tmp/a.txt'], expect.any(AbortSignal))
   })
@@ -125,7 +134,7 @@ describe('native path opener', () => {
   it('uses the current process platform when no platform override is supplied', async () => {
     const run = vi.fn<PathOpenerRunner>(async () => ({ stdout: '', stderr: '' }))
     await openNativePath('/tmp/platform-default.txt', signal(), {
-      osRelease: '6.8.0-generic', env: {}, run,
+      osRelease: '6.8.0-generic', env: { DISPLAY: ':0' }, run,
     })
     const expected = process.platform === 'win32'
       ? 'powershell.exe'
@@ -142,7 +151,9 @@ describe('native path opener', () => {
     const run = vi.fn<PathOpenerRunner>(async command => command === 'wslpath'
       ? { stdout: 'C:\\settings.yaml\n', stderr: '' }
       : { stdout: '', stderr: '' })
-    await openNativePath('/tmp/ambient-facts.yaml', signal(), { platform: 'linux', run })
+    await openNativePath('/tmp/ambient-facts.yaml', signal(), {
+      platform: 'linux', env: { ...process.env, DISPLAY: ':0' }, run,
+    })
     expect(run.mock.calls[0]?.[0]).toBe(ambientWsl ? 'wslpath' : 'xdg-open')
   })
 
@@ -239,7 +250,7 @@ describe('browser-renderable documents', () => {
     await openNativePath('/w/page.html', new AbortController().signal, {
       platform: 'linux',
       osRelease: '6.8.0-generic',
-      env: { BROWSER: 'firefox' },
+      env: { BROWSER: 'firefox', DISPLAY: ':0' },
       run: async (command, args) => { linux.push([command, ...args]); return { stdout: '', stderr: '' } },
     })
     expect(linux).toEqual([['firefox', '/w/page.html']])
@@ -249,7 +260,7 @@ describe('browser-renderable documents', () => {
     await openNativePath('/w/page.html', new AbortController().signal, {
       platform: 'linux',
       osRelease: '6.8.0-generic',
-      env: {},
+      env: { DISPLAY: ':0' },
       run: async (command, args) => { bare.push([command, ...args]); return { stdout: '', stderr: '' } },
     })
     expect(bare).toEqual([['xdg-open', '/w/page.html']])
