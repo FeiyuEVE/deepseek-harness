@@ -46,6 +46,7 @@ Most users never set these; the command-line flags feed the four settings below 
 | `printUrl` | `true` | Print the `dsh web:` URL line at startup |
 | `surfaceContext` | `true` | Give the agent GUI-orientation context and expose `DSH_WEB_URL` to its shell commands |
 | `trustedHosts` | `[]` | Extra hosts allowed to reach the GUI from the network |
+| `rescueIntakeUrl` | `''` | Decoupled self-rescue intake for the frontend error guard (e.g. the supervisor's `http://127.0.0.1:18445/report`); empty keeps the guard's in-profile fallback |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-web-app) is the exhaustive source for every accepted field and its JSDoc.
 

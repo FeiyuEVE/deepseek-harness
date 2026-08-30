@@ -69,7 +69,9 @@ The node half snapshots each client bundle and available source map before publi
 
 ### Boot manifest injection
 
-The host taps the index render and injects, into `<head>`: the `window.__ModuleLoader__` queue facade, advisory preloads for every application combo, the parser-blocking bootstrap combo scripts, then the boot graph before the shell reads it. The facade's `create()` materializes the modules bundle, delegates construction to its `createClientModuleSystem` export, and leaves the same facade in live-registration mode.
+The host taps the index render and injects, into `<head>`: the catch-all error-guard inline script as the outermost head row (before every other row, so it observes a crash in anything that follows), the `window.__ModuleLoader__` queue facade, advisory preloads for every application combo, the parser-blocking bootstrap combo scripts, then the boot graph before the shell reads it. The facade's `create()` materializes the modules bundle, delegates construction to its `createClientModuleSystem` export, and leaves the same facade in live-registration mode.
+
+The guard's intake endpoint adapts to the page origin: loopback pages use the injected `window.__DSH_RESCUE_INTAKE__` (fallback `/client-error`), remote pages (mobile tunnel) use the same-origin `/rescue-intake/report` reverse proxy. Manual self-rescue is owned by the Android app's native button, not by this script.
 
 ### Source map
 

@@ -56,6 +56,12 @@ export interface Config {
   surfaceContext: boolean
   /** Explicit `--trusted-host` authorities from this invocation. */
   trustedHosts: string[]
+  /**
+   * The decoupled self-rescue intake URL for the frontend error guard (for
+   * example `http://127.0.0.1:18445/report` of the supervisor service).
+   * Empty keeps the guard's in-profile fallback `/client-error`.
+   */
+  rescueIntakeUrl: string
 }
 
 export const Config: z<Config> = z.object({
@@ -63,6 +69,7 @@ export const Config: z<Config> = z.object({
   printUrl: z.boolean().default(true),
   surfaceContext: z.boolean().default(true),
   trustedHosts: z.array(String).default([]),
+  rescueIntakeUrl: z.string().default(''),
 })
 
 /** Bind-dependent Web values shared by the trust fence and URL display. */
@@ -239,6 +246,14 @@ export function apply(ctx: Context, config: Config): void {
   const handoffBrowser = config.openBrowser && !launchedThroughSsh(ctx)
   // Release dependent rows only after bind-dependent trust has been sampled once.
   ctx.provide(WEB_RUNTIME_SERVICE, runtime)
+  if (config.rescueIntakeUrl !== '') {
+    // The catch-all error guard reads this global lazily at flush time, so
+    // the row may follow the guard in the injection table. The guard points
+    // at the decoupled self-rescue service instead of the in-profile intake.
+    ctx.on('webserver/index-inject', (table) => {
+      table.push({ kind: 'global', name: '__DSH_RESCUE_INTAKE__', value: config.rescueIntakeUrl })
+    })
+  }
   ctx.plugin(FrontendStatic, { distIndex: internals.resolveDistIndex() })
   if (config.surfaceContext) {
     ctx.inject(['systemPrompt'], (promptCtx) => {
