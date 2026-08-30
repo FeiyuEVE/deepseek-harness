@@ -11,6 +11,8 @@ type ChatActions = {
     generation: TurnProcessGeneration,
     open: boolean,
   ) => void
+  openFilePreview: (draft: ChatStoreState, path: string) => void
+  closeFilePreview: (draft: ChatStoreState) => void
 }
 
 /**
@@ -32,7 +34,7 @@ export function storedTurnProcessEntry(
  */
 export function createChatStore(): EngineStoreHandle<ChatStoreState, ChatActions> {
   return defineStore({
-    init: (): ChatStoreState => ({ selection: null, turnProcesses: [] }),
+    init: (): ChatStoreState => ({ selection: null, turnProcesses: [], filePreview: null }),
     actions: {
       select: (draft, target: SelectionTarget | null) => { draft.selection = target },
       setTurnProcessOpen: (draft, turn, generation, open) => {
@@ -45,6 +47,8 @@ export function createChatStore(): EngineStoreHandle<ChatStoreState, ChatActions
         if (index < 0) draft.turnProcesses.push(next)
         else draft.turnProcesses[index] = next
       },
+      openFilePreview: (draft, path: string) => { draft.filePreview = { path } },
+      closeFilePreview: (draft) => { draft.filePreview = null },
     },
   })
 }

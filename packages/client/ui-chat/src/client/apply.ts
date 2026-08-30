@@ -45,6 +45,12 @@ const CHAT_NODE_INJECT: ChatNodeTurnDataInjected = {
   },
 }
 
+/** Whether this page was rendered by the mobile gateway's dedicated frontend. */
+function isMobileGatewaySurface(): boolean {
+  return typeof window !== 'undefined'
+    && (window as { __DSH_MOBILE_FRONTEND__?: unknown }).__DSH_MOBILE_FRONTEND__ === 'dedicated'
+}
+
 /** Services required by the Chat target and its presentation registrations. */
 export const inject = [
   'slots', 'sessions', 'uiSession', 'uiConversation', 'layout', 'locale',
@@ -119,11 +125,18 @@ export function apply(ctx: Context): void {
           fileMentions: (owner: TurnTailOwnerProps) => ctx.get('chatFileMentions')?.forClosing(owner),
           openFile: async (path) => {
             const cwd = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd
-            const result = await ctx.remote.session.openWorkspacePath({
-              path: resolveWorkspacePath(cwd, path),
-            })
+            const resolved = resolveWorkspacePath(cwd, path)
+            // The mobile gateway renders the dedicated mobile frontend: open the
+            // file in-page instead of handing it to a desktop opener.
+            if (isMobileGatewaySurface()) {
+              actions.openFilePreview(resolved)
+              return
+            }
+            const result = await ctx.remote.session.openWorkspacePath({ path: resolved })
             if (!result.ok) throw new Error(`path open failed: ${result.error.message}`)
           },
+          readWorkspaceFile: (request, signal) =>
+            ctx.remote.session.readWorkspaceFile(request, signal),
           loadOlder: () => { void session.loadOlder() },
           loadImage: Object.assign(
             (attachment: ImageAttachmentRef) => ctx.uiConversation.imageUrl(sessionId, attachment),

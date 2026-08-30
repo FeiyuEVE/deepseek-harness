@@ -1,6 +1,7 @@
 /** Chat-owned selection state shared by the transcript and details panel. */
 
 import type { TurnProcessGeneration } from './turn-process.ts'
+import type { FilePreviewState } from '../file-preview.ts'
 
 /** Tool call identity as carried by Chat nodes. */
 export type ToolCallId = string
@@ -23,4 +24,6 @@ export interface TurnProcessViewEntry {
 export interface ChatStoreState {
   selection: SelectionTarget | null
   turnProcesses: TurnProcessViewEntry[]
+  /** Open in-page file preview; null when none is open. */
+  filePreview: FilePreviewState | null
 }

@@ -22,6 +22,7 @@ import { EMPTY_CONVERSATION_SNAPSHOT } from '@deepseek-ai/dsh-client-ui-conversa
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import { createChatStore } from '../src/client/stores.ts'
+import type { WorkspaceFileReader } from '../src/client/file-preview.ts'
 import { ChatView } from '../src/client/chat/ChatView.tsx'
 import { ChatNodeSeat } from '../src/client/chat/ChatNodeSeat.tsx'
 import { zh } from '../src/client/locale.ts'
@@ -219,6 +220,10 @@ function makeHarness(
   const chatSource = makeChatSource(chatSlice, initialChat ?? chatSnapshot)
   const openDetails = vi.fn<(t: SelectionTarget) => void>()
   const openFile = vi.fn<(path: string) => Promise<void>>().mockResolvedValue(undefined)
+  const readWorkspaceFile: WorkspaceFileReader = () => Promise.resolve({
+    ok: false,
+    error: { code: 'unused', message: 'not used in chat-view tests', details: {} },
+  })
   const loadOlder = vi.fn()
   const openView = vi.fn<(view: string, focus: string) => void>()
   // In-memory scroll memory matching the apply.ts per-session map contract.
@@ -365,6 +370,7 @@ function makeHarness(
     completeViewRequest: () => {},
     openDetails,
     openFile,
+    readWorkspaceFile,
     loadOlder,
     loadImage: vi.fn(() => Promise.reject(new Error('not used'))),
     chatScroll,

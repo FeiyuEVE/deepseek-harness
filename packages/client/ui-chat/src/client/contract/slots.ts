@@ -10,6 +10,7 @@ import type {
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { MarkdownFileMentions } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
+import type { WorkspaceFileReader } from '../file-preview.ts'
 import type { createChatStore } from '../stores.ts'
 import type { ToolCallId, SelectionTarget } from './store.ts'
 import type { ChatNode, ChatNodeKind } from './chat-nodes.ts'
@@ -117,6 +118,8 @@ export interface ChatViewInjected {
   }
   openDetails: (target: SelectionTarget) => void
   openFile: (path: string) => Promise<void>
+  /** One byte-range read for the in-page file preview; null when unavailable. */
+  readWorkspaceFile: WorkspaceFileReader | null
   loadOlder: () => void
   loadImage: MessageImageLoader
   chatScroll: {
