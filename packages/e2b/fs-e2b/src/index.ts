@@ -292,6 +292,58 @@ export class E2BFileSystem extends FileSystem {
     return whole
   }
 
+  override async readBytesRange(target: FsTarget, offset: number, limit: number, signal?: AbortSignal): Promise<Uint8Array> {
+    const sandbox = await this.ctx.e2b.getSandbox()
+    const info = await this.requireRegular(target, signal)
+    if (info.size !== undefined && offset >= info.size) return new Uint8Array(0)
+    // The remote SDK exposes no seek; skipping the prefix in the stream is the
+    // portable range read. The stat preflight bounds the skip so a post-stat
+    // grower only costs the transferred prefix, never an unbounded buffer.
+    const stream = await openReadStream(sandbox, target, signal)
+    const reader = stream.getReader()
+    const chunks: Uint8Array[] = []
+    let skipped = 0
+    let bytes = 0
+    let completed = false
+    try {
+      while (bytes < limit) {
+        assertNotAborted(signal, 'read')
+        const next = await reader.read()
+        if (next.done) break
+        const chunk = next.value
+        if (skipped + chunk.byteLength <= offset) {
+          skipped += chunk.byteLength
+          continue
+        }
+        const start = Math.max(0, offset - skipped)
+        const take = Math.min(chunk.byteLength - start, limit - bytes)
+        chunks.push(chunk.subarray(start, start + take))
+        bytes += take
+        skipped += chunk.byteLength
+      }
+      completed = true
+    } catch (error: unknown) {
+      throw mapError(error, 'read', target.displayPath, signal)
+    } finally {
+      if (!completed) {
+        try {
+          await reader.cancel()
+        } catch (_streamCancellationFailure) {
+          // The read already failed; a cancellation failure on the abandoned
+          // remote stream adds nothing actionable for the caller.
+        }
+      }
+      reader.releaseLock()
+    }
+    const range = new Uint8Array(bytes)
+    let cursor = 0
+    for (const chunk of chunks) {
+      range.set(chunk, cursor)
+      cursor += chunk.byteLength
+    }
+    return range
+  }
+
   override async streamText(target: FsTarget, signal?: AbortSignal): Promise<AsyncIterable<string>> {
     const sandbox = await this.ctx.e2b.getSandbox()
     await this.requireRegular(target, signal)

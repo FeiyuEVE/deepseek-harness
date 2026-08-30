@@ -427,6 +427,44 @@ export async function readWholeBytes(
 }
 
 /**
+ * Read one byte range of a regular file, seeking instead of buffering the
+ * prefix. Returns raw bytes without decoding or binary rejection; the caller
+ * owns UTF-8 alignment tolerance at both edges.
+ * @param target - the resolved file to read.
+ * @param offset - inclusive zero-based start byte; past the file end returns empty.
+ * @param limit - inclusive byte cap on this range; must be a positive integer.
+ * @param signal - aborts the read (`FS_ABORTED`).
+ * @returns the raw bytes in `[offset, offset + limit)`, clamped to the file end.
+ */
+export async function readBytesRange(
+  target: LocalTarget,
+  offset: number,
+  limit: number,
+  signal?: AbortSignal,
+): Promise<Uint8Array> {
+  const info = await statRegularFile(target, 'read', signal)
+  if (offset >= info.size) return new Uint8Array(0)
+  const end = Math.min(info.size, offset + limit) - 1
+  const chunks: Buffer[] = []
+  let bytes = 0
+  try {
+    for await (const chunk of createReadStream(target.targetKey, {
+      start: offset,
+      end,
+      ...signal ? { signal } : {},
+    }) as AsyncIterable<Buffer>) {
+      bytes += chunk.length
+      chunks.push(chunk)
+    }
+  } catch (error: unknown) {
+    /* v8 ignore next 2 -- a mid-stream abort needs cancellation racing an active read; pre-abort is deterministic. */
+    if (isAbortError(error)) throw new FsError('read aborted', 'FS_ABORTED')
+    throw error
+  }
+  return Buffer.concat(chunks, bytes)
+}
+
+/**
  * Stream a whole regular UTF-8 text file as decoded text chunks. Same text
  * semantics as {@link readWholeText} (regular-file check, binary/NUL rejection,
  * cross-chunk UTF-8 decoding), but never holds the whole file in memory.

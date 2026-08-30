@@ -57,6 +57,10 @@ class FakeFileSystem extends FileSystem {
     }
     return bytes
   }
+  override async readBytesRange(target: FsTarget, offset: number, limit: number): Promise<Uint8Array> {
+    const bytes = new TextEncoder().encode(await this.readText(target))
+    return bytes.slice(offset, offset + limit)
+  }
   override async listDir(target: FsTarget): Promise<FsDirEntry[]> {
     if (target.targetKey !== 'skills') throw new FsError(`not a directory: ${target.displayPath}`, 'FS_NOT_DIRECTORY')
     return [
