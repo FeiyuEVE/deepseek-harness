@@ -134,18 +134,6 @@ Real-API tests and demos read `DEEPSEEK_API_KEY`, optional `DEEPSEEK_BASE_URL`, 
 - TODO markers: `FIXME`/`TODO`/`XXX` by urgency ([semantics](docs/development.md)).
 - Files end with exactly one trailing newline; `git diff --cached --check` (pre-commit) gates it.
 
-## File-based plugin development notes
-
-External file bundles (`dsh.bundle` patch rows, e.g. `dsh plugin --profile add`) follow the same Cordis rules as workspace packages, with these hard-won differences:
-
-- **Tool `parameters` is a complete JSON Schema** (`{ type: 'object', properties, required }`); the author-map form passes `register()` and fails only at model-facing validation with `got 'type: null'`. Empty parameters still need `{ type: 'object', properties: {} }`; output schema may be `{ type: 'object', additionalProperties: true }`.
-- **Activation order is not guaranteed**; `ctx.get('slots')` / `ctx.get('subprocess')` at apply time can stay `undefined` forever (silent UI absence, `subprocess 服务不可用`). Declare hard dependencies in `inject` — `['tools', 'subprocess', 'webServer']` on Host, `['slots']` on client — so Cordis defers apply.
-- **File-bundle clients have no `remote`/`host` builtins** (dynamic-runner only); cross-process data goes through Host `webServer` routes + same-origin `fetch`.
-- **Hand-written client factories** (`window.__ModuleLoader__.load({ id, factory })`) MUST end with `return module.exports`.
-- **`subprocess.spawn` collected mode can exit 0 with empty stdout**; prefer `'pipe'` and self-collect. Never truncate output before `JSON.parse`.
-- **Typert manifests need strict codecs** (`{ mode: 'strict', typeSymbol, schema: zod }`) and complete `model`/service arrays.
-- **Display data (device rooms, sensor owners) comes from the modeled store**, never hardcoded client maps.
-
 ## Defensive patterns
 
 Read [docs/defensive-patterns.md](docs/defensive-patterns.md) before lifecycle, concurrency, subprocess, or teardown work.
