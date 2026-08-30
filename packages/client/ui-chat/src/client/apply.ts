@@ -45,10 +45,11 @@ const CHAT_NODE_INJECT: ChatNodeTurnDataInjected = {
   },
 }
 
-/** Whether this page was rendered by the mobile gateway's dedicated frontend. */
-function isMobileGatewaySurface(): boolean {
-  return typeof window !== 'undefined'
-    && (window as { __DSH_MOBILE_FRONTEND__?: unknown }).__DSH_MOBILE_FRONTEND__ === 'dedicated'
+/** Handheld surfaces open files in-page: the mobile gateway's dedicated frontend or a mobile-device browser (LAN or gateway origin). */
+function isMobileSurface(): boolean {
+  if (typeof window === 'undefined') return false
+  return (window as { __DSH_MOBILE_FRONTEND__?: unknown }).__DSH_MOBILE_FRONTEND__ === 'dedicated'
+    || /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(window.navigator.userAgent)
 }
 
 /** Services required by the Chat target and its presentation registrations. */
@@ -126,9 +127,9 @@ export function apply(ctx: Context): void {
           openFile: async (path) => {
             const cwd = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd
             const resolved = resolveWorkspacePath(cwd, path)
-            // The mobile gateway renders the dedicated mobile frontend: open the
-            // file in-page instead of handing it to a desktop opener.
-            if (isMobileGatewaySurface()) {
+            // Handheld surfaces (mobile gateway frontend or a mobile-device
+            // browser) open the file in-page instead of the desktop opener.
+            if (isMobileSurface()) {
               actions.openFilePreview(resolved)
               return
             }
