@@ -1,11 +1,17 @@
 .root {
   position: relative;
+  /* A squeezeable header entry: layout may share the row with the title and
+     other header pills on narrow surfaces instead of overflowing. */
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .trigger {
   display: inline-flex;
   align-items: center;
   gap: 3px;
+  min-width: 0;
+  max-width: 100%;
   min-height: 28px;
   padding: 3px 2px;
   border: 0;
@@ -15,6 +21,7 @@
   font-size: 12px;
   line-height: 18px;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .trigger:hover,
@@ -35,7 +42,13 @@
 }
 
 .count {
+  /* Must never wrap (the chevron would drop to a second line); when the row
+     is squeezed, elide the count instead of breaking the line. */
+  min-width: 0;
   margin: 0 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .menu {

@@ -81,7 +81,11 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  min-width: 0;
+  /* The title is the primary row identity: it concedes space to the header
+     actions on narrow surfaces but never collapses to zero (a squeezed row
+     then elides the title instead of erasing it). */
+  flex: 1 1 auto;
+  min-width: 48px;
   overflow: hidden;
   white-space: nowrap;
 }
@@ -132,13 +136,22 @@
 
 .headerActions {
   display: flex;
-  flex: none;
+  flex: 0 1 auto;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+}
+
+/* Header pills (preset label, background-job count, …) may be squeezed by the
+   shared row; each stays a flex item that elides instead of wrapping. */
+.headerActions > * {
+  min-width: 0;
 }
 
 .headerUtilities {
   display: flex;
+  /* Never squeezes its own buttons (utility actions stay fully tappable);
+     the title and the header pills concede the width instead. */
   flex: none;
   align-items: center;
   gap: 8px;
@@ -147,6 +160,23 @@
 
 .headerUtilities:empty {
   display: none;
+}
+
+/* Narrow viewports (phones): tighten the header chrome and cap the title so
+   the breadcrumb, the header pills, and the utilities share one row without
+   wrapping or squeezing the title to nothing. */
+@media (max-width: 640px) {
+  .header {
+    padding: 10px 16px 0 12px;
+  }
+
+  .crumb {
+    max-width: 38vw;
+  }
+
+  .headerUtilities {
+    margin-left: 10px;
+  }
 }
 
 /* figma Tab_Group 34:11441: 35px strip, gap 36, pad-left 8, tabs bottom-aligned. */
