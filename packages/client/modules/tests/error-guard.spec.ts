@@ -257,13 +257,15 @@ describe('frontend error guard script', () => {
     expect(h.sent).toHaveLength(0)
   })
 
-  it('routes remote pages (mobile tunnel) to the same-origin log-ingest primary', async () => {
+  it('routes remote pages (mobile tunnel) straight to the /rescue-intake fallback', async () => {
+    // The public /log-ingest upstream requires X-Log-Token, which the guard
+    // cannot carry; remote pages skip it to avoid an always-403 probe.
     const h = makeHarness({ remote: true })
     h.dispatch('error', errorEvent({}))
     h.runFlush()
     const reports = await drain(h.sent)
     expect(reports).toHaveLength(1)
-    expect(reports[0]!.url).toBe('https://feiyueve.com:18443/log-ingest')
+    expect(reports[0]!.url).toBe('https://feiyueve.com:18443/rescue-intake/report')
   })
 
 

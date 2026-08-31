@@ -69,6 +69,11 @@ const GUARD_SOURCE = `(() => {
     } catch (e) { return false }
   }
   function primaryIntake() {
+    // Remote pages (mobile via the public tunnel) reach a token-guarded nginx
+    // /log-ingest upstream; a tokenless guard POST is always 403 there (and
+    // the guard cannot carry the deployment token). Skip straight to the
+    // /rescue-intake reverse-proxy fallback on remote hosts instead.
+    if (isRemoteHost()) return ''
     var origin = pageOrigin()
     return origin !== '' ? origin + '/log-ingest' : ''
   }
