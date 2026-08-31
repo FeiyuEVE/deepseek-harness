@@ -68,12 +68,19 @@ const GUARD_SOURCE = `(() => {
       return typeof host === 'string' && host !== '' && host !== '127.0.0.1' && host !== 'localhost' && host !== '::1'
     } catch (e) { return false }
   }
+  function ingestToken() {
+    try {
+      var t = window.__DSH_INGEST_TOKEN__
+      return typeof t === 'string' ? t : ''
+    } catch (e) { return '' }
+  }
   function primaryIntake() {
     // Remote pages (mobile via the public tunnel) reach a token-guarded nginx
-    // /log-ingest upstream; a tokenless guard POST is always 403 there (and
-    // the guard cannot carry the deployment token). Skip straight to the
-    // /rescue-intake reverse-proxy fallback on remote hosts instead.
-    if (isRemoteHost()) return ''
+    // /log-ingest upstream. The deployment injects __DSH_INGEST_TOKEN__ when
+    // it wants the guard to carry a page-scoped token there; without one a
+    // remote POST always 403s, so skip straight to the /rescue-intake
+    // reverse-proxy fallback on remote hosts instead.
+    if (isRemoteHost() && ingestToken() === '') return ''
     var origin = pageOrigin()
     return origin !== '' ? origin + '/log-ingest' : ''
   }
@@ -137,8 +144,9 @@ const GUARD_SOURCE = `(() => {
   function deliver(targets, entry, body, idx) {
     if (idx >= targets.length) { requeue(entry); return }
     var url = targets[idx]
+    var token = ingestToken()
     try {
-      if (idx === 0 && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+      if (idx === 0 && token === '' && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
         try {
           if (navigator.sendBeacon(url, new Blob([body], { type: 'text/plain' }))) return
         } catch (e) {}
@@ -146,6 +154,7 @@ const GUARD_SOURCE = `(() => {
       var xhr = new XMLHttpRequest()
       xhr.open('POST', url, true)
       xhr.setRequestHeader('content-type', 'text/plain')
+      if (token !== '') xhr.setRequestHeader('x-log-token', token)
       xhr.onload = function () { if (xhr.status !== 200) deliver(targets, entry, body, idx + 1) }
       xhr.onerror = function () { deliver(targets, entry, body, idx + 1) }
       xhr.send(body)

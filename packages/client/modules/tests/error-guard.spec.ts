@@ -34,6 +34,7 @@ function makeHarness(options: {
   beacon?: boolean
   storageThrows?: boolean
   customIntake?: string
+  ingestToken?: string
   remote?: boolean
 } = {}): Harness {
   const listeners = new Map<string, Array<(event: unknown) => void>>()
@@ -83,6 +84,7 @@ function makeHarness(options: {
     },
   }
   if (options.customIntake !== undefined) window.__DSH_RESCUE_INTAKE__ = options.customIntake
+  if (options.ingestToken !== undefined) window.__DSH_INGEST_TOKEN__ = options.ingestToken
 
   class FakeXhr {
     method = ''
@@ -266,6 +268,19 @@ describe('frontend error guard script', () => {
     const reports = await drain(h.sent)
     expect(reports).toHaveLength(1)
     expect(reports[0]!.url).toBe('https://feiyueve.com:18443/rescue-intake/report')
+  })
+
+  it('carries the injected page ingest token on remote /log-ingest delivery', async () => {
+    // Deployments that inject __DSH_INGEST_TOKEN__ expect token-guarded
+    // ingest everywhere: the remote guard posts /log-ingest with X-Log-Token
+    // (an XHR — sendBeacon cannot carry headers) and falls back on 403.
+    const h = makeHarness({ remote: true, ingestToken: 'dshm-page-ingest-test' })
+    h.dispatch('error', errorEvent({}))
+    h.runFlush()
+    expect(h.sent).toHaveLength(0) // beacon skipped when a token is present
+    expect(h.xhrCalls).toHaveLength(1)
+    expect(h.xhrCalls[0]!.url).toBe('https://feiyueve.com:18443/log-ingest')
+    expect(h.xhrCalls[0]!.headers['x-log-token']).toBe('dshm-page-ingest-test')
   })
 
 
