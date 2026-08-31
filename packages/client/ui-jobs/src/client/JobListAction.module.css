@@ -52,9 +52,10 @@
 }
 
 .menu {
-  position: absolute;
-  top: calc(100% + 5px);
-  left: 0;
+  /* Anchored to the viewport by inline top/right (computed from the trigger
+     at open time): the header row scrolls horizontally on narrow surfaces,
+     which would clip an absolutely-positioned popover opening below it. */
+  position: fixed;
   z-index: 100;
   box-sizing: border-box;
   display: flex;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import type { SessionJob as JobView } from '@deepseek-ai/dsh-api-session-controller/types'
 import { IconChevronDownOutline14, StateDot, useDismissOnOutsidePointer, type StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
@@ -131,6 +131,28 @@ export function JobListAction({ sessionId, useSessions, t }: JobListActionProps)
     triggerRef.current?.focus()
   }
 
+  // The menu anchors to the viewport (not the trigger's offset parent): the
+  // header row is a horizontal scroll container on narrow surfaces, which
+  // would clip an absolutely-positioned popover that opens below it. Fixed
+  // placement keeps the menu inside the viewport AND inside the DOM subtree,
+  // so useDismissOnOutsidePointer still counts a menu click as inside.
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(null)
+  useLayoutEffect(() => {
+    if (!open) {
+      setMenuPos(null)
+      return
+    }
+    const trigger = triggerRef.current
+    if (trigger === null) return
+    const box = trigger.getBoundingClientRect()
+    // Clamp into the viewport: the 336px menu opens below the trigger, shifting
+    // left so it never runs off either edge (a right-anchored width overflows
+    // the left edge when the trigger sits near the right of a narrow screen).
+    const width = Math.min(336, window.innerWidth - 32)
+    const left = Math.max(16, Math.min(box.left, window.innerWidth - width - 16))
+    setMenuPos({ top: box.bottom + 5, left, width })
+  }, [open])
+
   return (
     <div ref={rootRef} className={css.root} onKeyDown={onKeyDown}>
       <button
@@ -154,7 +176,16 @@ export function JobListAction({ sessionId, useSessions, t }: JobListActionProps)
       </button>
       {open
         ? (
-          <ul className={css.menu} aria-label={t('list.aria')}>
+          <ul
+            className={css.menu}
+            aria-label={t('list.aria')}
+            style={menuPos === null ? undefined : {
+              position: 'fixed',
+              top: menuPos.top,
+              left: menuPos.left,
+              width: menuPos.width,
+            }}
+          >
             {rows.map((job) => {
               const live = isLive(job)
               const elapsed = live ? now - job.startedAt : (job.finishedAt ?? job.startedAt) - job.startedAt
