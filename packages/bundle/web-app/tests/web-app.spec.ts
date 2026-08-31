@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { createLaunchEnvironmentSnapshot, DSH_LAUNCH_ENVIRONMENT_KEY } from '@deepseek-ai/dsh-launch-environment'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import type { WebServer } from '@deepseek-ai/dsh-host-webserver'
+import type { IndexInjection, WebServer } from '@deepseek-ai/dsh-host-webserver'
 import { apply, Config, internals } from '../src/index.ts'
 
 vi.mock('node:child_process', async importOriginal => ({
@@ -335,6 +335,36 @@ describe('web-app runtime glue', () => {
     // request-time concern, so a dist-less composition (the static worker
     // preview ships its own page) still boots.
     expect(originalResolve()).toMatch(/dist[/\\]index\.html$/)
+  })
+
+  it('injects the decoupled rescue intake global when configured', async () => {
+    stageDist()
+    const ctx = new Context()
+    ctx.provide('webServer', fakeHttpServer().server)
+    provideConnection(ctx)
+    apply(ctx, new Config({
+      openBrowser: false,
+      printUrl: false,
+      surfaceContext: false,
+      trustedHosts: [],
+      rescueIntakeUrl: 'http://127.0.0.1:18445/report',
+    }))
+    const table: IndexInjection[] = []
+    ctx.emit('webserver/index-inject', table)
+    expect(table).toContainEqual({ kind: 'global', name: '__DSH_RESCUE_INTAKE__', value: 'http://127.0.0.1:18445/report' })
+    await ctx.fiber.dispose()
+  })
+
+  it('omits the rescue intake global when unconfigured', async () => {
+    stageDist()
+    const ctx = new Context()
+    ctx.provide('webServer', fakeHttpServer().server)
+    provideConnection(ctx)
+    apply(ctx, new Config({ openBrowser: false, printUrl: false, surfaceContext: false, trustedHosts: [], rescueIntakeUrl: '' }))
+    const table: IndexInjection[] = []
+    ctx.emit('webserver/index-inject', table)
+    expect(table).not.toContainEqual({ kind: 'global', name: '__DSH_RESCUE_INTAKE__', value: 'http://127.0.0.1:18445/report' })
+    await ctx.fiber.dispose()
   })
 
   it.each([
