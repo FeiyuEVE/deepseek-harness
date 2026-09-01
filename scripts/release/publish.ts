@@ -78,10 +78,13 @@ function registryState(name: string, version: string): RegistryState {
     throw new Error(`npm view ${name}@${version} failed:\n${output}`)
   }
   const parsed: unknown = JSON.parse(result.stdout)
-  if (typeof parsed !== 'string' || parsed === '') {
+  // npm >= 11 may answer a single-field `npm view ... --json` with a
+  // one-element array instead of the bare string.
+  const integrity = Array.isArray(parsed) ? parsed[0] : parsed
+  if (typeof integrity !== 'string' || integrity === '') {
     throw new Error(`registry reported no dist.integrity for ${name}@${version}`)
   }
-  return { kind: 'present', integrity: parsed }
+  return { kind: 'present', integrity }
 }
 
 /**
