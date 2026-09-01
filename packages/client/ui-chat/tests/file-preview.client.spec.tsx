@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { makeTranslate, bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import type { SessionReadWorkspaceFileRequest } from '@deepseek-ai/dsh-api-session-controller/types'
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import { zh } from '../src/client/locale.ts'
 import { createChatStore } from '../src/client/stores.ts'
 import type { WorkspaceFileReader } from '../src/client/file-preview.ts'
@@ -143,7 +144,7 @@ describe('FilePreview', () => {
   it('surfaces read failures', async () => {
     const read: WorkspaceFileReader = async () => ({
       ok: false,
-      error: { message: 'boom', code: 'session/read-invalid', details: {} },
+      error: new RemoteError('gateway/internal', 'boom', {}),
     })
     render(<FilePreview path="/workspace/missing.txt" read={read} readBinary={null} close={vi.fn()} t={t} />)
     expect(await screen.findByText('无法读取文件：boom')).toBeTruthy()
@@ -269,7 +270,7 @@ describe('FilePreview image rendering', () => {
   it('shows the preview error when the binary read fails', async () => {
     const readBinary: WorkspaceImageReader = async () => ({
       ok: false,
-      error: { code: 'session/read-not-found', message: 'missing', details: {} },
+      error: new RemoteError('gateway/internal', 'missing', {}),
     })
     render(
       <FilePreview

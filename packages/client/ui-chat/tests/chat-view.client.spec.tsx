@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useEffect } from 'react'
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   AssistantMessageNode, ChatNode, ChatNodeOwnerProps, ChatNodeViewProps, ChatSnapshot,
   ChatViewSlotProps, CommandNode, CompactionSummaryNode, ContextMessageNode, ConversationNode,
@@ -251,7 +252,7 @@ function makeHarness(
   const openFile = vi.fn<(path: string) => Promise<void>>().mockResolvedValue(undefined)
   const readWorkspaceFile: WorkspaceFileReader = () => Promise.resolve({
     ok: false,
-    error: { code: 'session/read-invalid', message: 'not used in chat-view tests', details: {} },
+    error: new RemoteError('gateway/internal', 'not used in chat-view tests', {}),
   })
   const loadOlder = vi.fn()
   const loadThrough = vi.fn<(seq: number) => Promise<void>>().mockResolvedValue(undefined)
