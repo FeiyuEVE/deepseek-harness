@@ -143,7 +143,7 @@ describe('FilePreview', () => {
   it('surfaces read failures', async () => {
     const read: WorkspaceFileReader = async () => ({
       ok: false,
-      error: { message: 'boom', code: 'read-failed', details: {} },
+      error: { message: 'boom', code: 'session/read-invalid', details: {} },
     })
     render(<FilePreview path="/workspace/missing.txt" read={read} readBinary={null} close={vi.fn()} t={t} />)
     expect(await screen.findByText('无法读取文件：boom')).toBeTruthy()
@@ -269,7 +269,7 @@ describe('FilePreview image rendering', () => {
   it('shows the preview error when the binary read fails', async () => {
     const readBinary: WorkspaceImageReader = async () => ({
       ok: false,
-      error: { code: 'not-found', message: 'missing', details: {} },
+      error: { code: 'session/read-not-found', message: 'missing', details: {} },
     })
     render(
       <FilePreview

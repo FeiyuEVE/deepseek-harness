@@ -67,7 +67,7 @@ describe('WorkspaceImageUrlCache', () => {
   it('caches a failed read as a declined resolution without retrying', async () => {
     const reader = vi.fn(() => Promise.resolve<RemoteResult<never>>({
       ok: false,
-      error: { code: 'not-found', message: 'missing', details: {} },
+      error: { code: 'session/read-not-found', message: 'missing', details: {} },
     }))
     const cache = new WorkspaceImageUrlCache(reader)
     expect(cache.peek('/ws/missing.png')).toBeUndefined()

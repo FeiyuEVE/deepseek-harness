@@ -251,7 +251,7 @@ function makeHarness(
   const openFile = vi.fn<(path: string) => Promise<void>>().mockResolvedValue(undefined)
   const readWorkspaceFile: WorkspaceFileReader = () => Promise.resolve({
     ok: false,
-    error: { code: 'unused', message: 'not used in chat-view tests', details: {} },
+    error: { code: 'session/read-invalid', message: 'not used in chat-view tests', details: {} },
   })
   const loadOlder = vi.fn()
   const loadThrough = vi.fn<(seq: number) => Promise<void>>().mockResolvedValue(undefined)

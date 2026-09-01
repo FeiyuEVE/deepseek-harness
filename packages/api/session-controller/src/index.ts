@@ -9,7 +9,7 @@ import { canOpenNativePath, openNativePath } from '@deepseek-ai/dsh-native-comma
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionInspection } from '@deepseek-ai/dsh-session-persistence'
 import type { SessionObservation } from '@deepseek-ai/dsh-session-query'
-import { Remote, RemoteError, TypertRemoteFailure, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { bytesToBase64 } from '@deepseek-ai/dsh-util-crypto'
 import {
   ApiSessionAgentController,
@@ -134,6 +134,17 @@ declare module '@deepseek-ai/cordis' {
   interface Context {
     /** Host Session business API and Remote namespace owner. */
     sessionController: SessionController
+  }
+}
+
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface RemoteErrorDetailsMap {
+    /** The workspace file read request was refused by business validation. */
+    'session/read-invalid': {}
+    /** The addressed workspace path does not exist or is not a regular file. */
+    'session/read-not-found': {}
+    /** The requested byte window exceeds the read cap. */
+    'session/read-too-large': {}
   }
 }
 
@@ -387,7 +398,7 @@ export class SessionController extends TypertRemoteService {
    * @param signal - caller lifetime; abort terminates the read.
    * @returns the decoded text chunk and file metadata; binary files return
    *   metadata only with an empty content.
-   * @throws TypertRemoteFailure when the path is invalid, absent, not a regular
+   * @throws RemoteError when the path is invalid, absent, not a regular
    *   file, or the read fails.
    */
   @Remote('readWorkspaceFile')
@@ -399,43 +410,23 @@ export class SessionController extends TypertRemoteService {
     const offset = request.offset ?? 0
     const limit = request.limit === undefined ? chunkBytes : Math.min(request.limit, chunkBytes)
     if (request.path.length === 0 || !isHostAbsolutePath(request.path)) {
-      throw new TypertRemoteFailure({
-        code: 'bad-request',
-        message: 'session.readWorkspaceFile requires an absolute non-empty path',
-        details: {},
-      })
+      throw new RemoteError('session/read-invalid', 'session.readWorkspaceFile requires an absolute non-empty path', {})
     }
     if (!Number.isSafeInteger(offset) || offset < 0) {
-      throw new TypertRemoteFailure({
-        code: 'bad-request',
-        message: 'session.readWorkspaceFile offset must be a non-negative integer',
-        details: {},
-      })
+      throw new RemoteError('session/read-invalid', 'session.readWorkspaceFile offset must be a non-negative integer', {})
     }
     if (!Number.isSafeInteger(limit) || limit < 1) {
-      throw new TypertRemoteFailure({
-        code: 'bad-request',
-        message: 'session.readWorkspaceFile limit must be a positive integer',
-        details: {},
-      })
+      throw new RemoteError('session/read-invalid', 'session.readWorkspaceFile limit must be a positive integer', {})
     }
     signal.throwIfAborted()
     const fs = this.ctx.fs
     const target = await fs.resolve(request.path, { signal })
     const info = await fs.stat(target, signal)
     if (info === undefined) {
-      throw new TypertRemoteFailure({
-        code: 'not-found',
-        message: `session.readWorkspaceFile: "${target.displayPath}" does not exist`,
-        details: {},
-      })
+      throw new RemoteError('session/read-not-found', `session.readWorkspaceFile: "${target.displayPath}" does not exist`, {})
     }
     if (info.type !== 'file') {
-      throw new TypertRemoteFailure({
-        code: 'bad-request',
-        message: `session.readWorkspaceFile: "${target.displayPath}" is not a regular file`,
-        details: {},
-      })
+      throw new RemoteError('session/read-invalid', `session.readWorkspaceFile: "${target.displayPath}" is not a regular file`, {})
     }
     const bytes = await fs.readBytesRange(target, offset, limit, signal)
     const binary = bytes.subarray(0, BINARY_SAMPLE_BYTES).includes(0)
@@ -461,7 +452,7 @@ export class SessionController extends TypertRemoteService {
    * @param request - absolute path of the image file to read.
    * @param signal - caller lifetime; abort terminates the read.
    * @returns the media type and base64-encoded whole-file bytes.
-   * @throws TypertRemoteFailure when the path is invalid, unsupported, absent,
+   * @throws RemoteError when the path is invalid, unsupported, absent,
    *   oversized, not a regular file, or the read fails.
    */
   @Remote('readWorkspaceFileBinary')
@@ -471,45 +462,25 @@ export class SessionController extends TypertRemoteService {
   ): Promise<SessionReadWorkspaceFileBinaryValue> {
     const maxBytes = this.config.workspaceImageMaxBytes ?? DEFAULT_WORKSPACE_IMAGE_MAX_BYTES
     if (request.path.length === 0 || !isHostAbsolutePath(request.path)) {
-      throw new TypertRemoteFailure({
-        code: 'bad-request',
-        message: 'session.readWorkspaceFileBinary requires an absolute non-empty path',
-        details: {},
-      })
+      throw new RemoteError('session/read-invalid', 'session.readWorkspaceFileBinary requires an absolute non-empty path', {})
     }
     const extension = extname(request.path).toLowerCase()
     const mediaType = WORKSPACE_IMAGE_MEDIA_TYPES[extension]
     if (mediaType === undefined || !WORKSPACE_IMAGE_EXTENSIONS.has(extension)) {
-      throw new TypertRemoteFailure({
-        code: 'bad-request',
-        message: `session.readWorkspaceFileBinary: "${extension || '(no extension)'}" is not a renderable image`,
-        details: {},
-      })
+      throw new RemoteError('session/read-invalid', `session.readWorkspaceFileBinary: "${extension || '(no extension)'}" is not a renderable image`, {})
     }
     signal.throwIfAborted()
     const fs = this.ctx.fs
     const target = await fs.resolve(request.path, { signal })
     const info = await fs.stat(target, signal)
     if (info === undefined) {
-      throw new TypertRemoteFailure({
-        code: 'not-found',
-        message: `session.readWorkspaceFileBinary: "${target.displayPath}" does not exist`,
-        details: {},
-      })
+      throw new RemoteError('session/read-not-found', `session.readWorkspaceFileBinary: "${target.displayPath}" does not exist`, {})
     }
     if (info.type !== 'file') {
-      throw new TypertRemoteFailure({
-        code: 'bad-request',
-        message: `session.readWorkspaceFileBinary: "${target.displayPath}" is not a regular file`,
-        details: {},
-      })
+      throw new RemoteError('session/read-invalid', `session.readWorkspaceFileBinary: "${target.displayPath}" is not a regular file`, {})
     }
     if (info.size !== undefined && info.size > maxBytes) {
-      throw new TypertRemoteFailure({
-        code: 'too-large',
-        message: `session.readWorkspaceFileBinary: "${target.displayPath}" exceeds the ${maxBytes}-byte preview cap`,
-        details: {},
-      })
+      throw new RemoteError('session/read-too-large', `session.readWorkspaceFileBinary: "${target.displayPath}" exceeds the ${maxBytes}-byte preview cap`, {})
     }
     const bytes = await fs.readBytesRange(target, 0, Math.min(maxBytes + 1, info.size ?? maxBytes + 1), signal)
     return {
