@@ -4,16 +4,22 @@ import type { ConversationLocationDataStore, ConversationTurnDataMap } from '@de
 import type { ChatNodeOwnerProps, ChatViewSlotProps } from '../contract/slots.ts'
 import type { ChatNode } from '../contract/chat-nodes.ts'
 import { TURN_PROCESS_INDEPENDENT_KINDS } from '../contract/turn-process.ts'
+import type { AssistantMessageId } from '../contract/store.ts'
+import type { MarkdownViewMode } from '../../chat-settings.ts'
 import { storedTurnProcessEntry } from '../stores.ts'
 import { useSearchableHidden } from './searchable-hidden.ts'
 import css from './ChatView.module.css'
 
-interface ChatNodeSeatProps extends ChatNodeOwnerProps {
+interface ChatNodeSeatProps extends Omit<ChatNodeOwnerProps, 'markdownView' | 'toggleMessageRaw'> {
   readonly nodeKey: string
   readonly useChatNode: ChatViewSlotProps['useChatNode']
   readonly useChatNodeProcess: ChatViewSlotProps['useChatNodeProcess']
   readonly historyIncomplete: boolean
   readonly compactTranscript: boolean
+  /** Persisted Markdown presentation before a per-message override. */
+  readonly markdownViewDefault: MarkdownViewMode
+  /** Workspace-aware Markdown image resolver (identity moves when a load settles). */
+  readonly resolveImage: (src: string) => string | undefined
   readonly useStore: ChatViewSlotProps['useStore']
   readonly actions: ChatViewSlotProps['actions']
   readonly renderSlot: ChatViewSlotProps['renderSlot']
@@ -37,6 +43,7 @@ function turnOf(node: ChatNode | undefined): number | undefined {
 /** Subscribe, apply Turn-process visibility, and dispatch one stable Context key. */
 export const ChatNodeSeat = memo(function ChatNodeSeat({
   nodeKey, useChatNode, useChatNodeProcess, historyIncomplete, compactTranscript,
+  markdownViewDefault, resolveImage,
   selectedCallId, cwd, openFile, inspectCall, forkAt,
   renderMessageImages, fileMentions, useStore, actions, renderSlot, t,
 }: ChatNodeSeatProps) {
@@ -45,6 +52,25 @@ export const ChatNodeSeat = memo(function ChatNodeSeat({
   const turn = turnOf(routedNode)
   const processPresentation = useChatNodeProcess(nodeKey)
   const processSpec = processPresentation?.spec
+  // The durable message identity shared by an answer body and its tail chrome:
+  // per-message raw overrides key on it, so both seats resolve one view.
+  const messageId = useMemo(() => {
+    const current = routedNode
+    if (current?.kind === 'assistant-step' && current.data.finalNode !== undefined) {
+      return current.data.finalNode.messageId
+    }
+    if (current?.kind === 'turn-tail' && current.data.closing !== null) {
+      return current.data.closing.finalNode.messageId
+    }
+    return undefined
+  }, [routedNode])
+  const rawOverride = useStore(state => messageId === undefined ? undefined : state.rawOverrides[messageId])
+  const markdownView: MarkdownViewMode = rawOverride === undefined ? markdownViewDefault : rawOverride === true ? 'raw' : 'render'
+  const toggleMessageRaw = useCallback((message: AssistantMessageId) => {
+    // Flip the resolved presentation: the override then pins the opposite
+    // arm until toggled again (or the persisted default changes).
+    actions.setMessageRaw(message, markdownView !== 'raw')
+  }, [actions, markdownView])
   const storedEntry = useStore(state => processSpec === undefined
     ? undefined
     : storedTurnProcessEntry(state, processSpec.turn))
@@ -111,9 +137,12 @@ export const ChatNodeSeat = memo(function ChatNodeSeat({
       renderMessageImages,
       fileMentions,
       turnProcess,
+      markdownView,
+      toggleMessageRaw,
+      resolveImage,
     }, [
     node, selectedCallId, cwd, openFile, inspectCall, forkAt,
-    renderMessageImages, fileMentions, turnProcess,
+    renderMessageImages, fileMentions, turnProcess, markdownView, toggleMessageRaw, resolveImage,
   ])
   if (routedNode === undefined || owner === null) return null
   const turnData = turnDataOf(routedNode)

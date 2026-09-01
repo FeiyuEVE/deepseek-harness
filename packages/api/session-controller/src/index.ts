@@ -2,12 +2,15 @@
 
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import { extname } from 'node:path'
+import type {} from '@deepseek-ai/dsh-fs'
 import { errorChain } from '@deepseek-ai/dsh-llm'
 import { canOpenNativePath, openNativePath } from '@deepseek-ai/dsh-native-command'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionInspection } from '@deepseek-ai/dsh-session-persistence'
 import type { SessionObservation } from '@deepseek-ai/dsh-session-query'
-import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { Remote, RemoteError, TypertRemoteFailure, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { bytesToBase64 } from '@deepseek-ai/dsh-util-crypto'
 import {
   ApiSessionAgentController,
   inspectApiSession,
@@ -42,6 +45,10 @@ import type {
   SessionPageRequest,
   SessionPromptRequest,
   SessionPromptValue,
+  SessionReadWorkspaceFileBinaryRequest,
+  SessionReadWorkspaceFileBinaryValue,
+  SessionReadWorkspaceFileRequest,
+  SessionReadWorkspaceFileValue,
   SessionRenameRequest,
   SessionRenameValue,
   SessionSearchRequest,
@@ -57,6 +64,72 @@ export { ApiSessionNotFound } from './agent.ts'
 export { SessionFileReferences } from './file-references.ts'
 export { SessionSkillCatalog } from './skill-catalog.ts'
 
+/** Default and maximum bytes returned by one `readWorkspaceFile` call. */
+export const DEFAULT_WORKSPACE_FILE_CHUNK_BYTES = 256 * 1024
+
+/** Default and maximum bytes returned by one `readWorkspaceFileBinary` image. */
+export const DEFAULT_WORKSPACE_IMAGE_MAX_BYTES = 8 * 1024 * 1024
+
+/** Leading bytes scanned for NUL to classify a file as binary. */
+const BINARY_SAMPLE_BYTES = 8192
+
+/** Extensions rendered as markdown by preview surfaces. */
+const MARKDOWN_EXTENSIONS = new Set(['.md', '.markdown', '.mdx'])
+
+/** Extensions rendered as structured JSON by preview surfaces. */
+const JSON_EXTENSIONS = new Set(['.json', '.jsonc'])
+
+/** Extensions rendered as structured YAML by preview surfaces. */
+const YAML_EXTENSIONS = new Set(['.yaml', '.yml'])
+
+/** Extensions rendered with code highlighting by preview surfaces. */
+const CODE_EXTENSIONS = new Set([
+  '.c', '.cc', '.cpp', '.cs', '.css', '.dart', '.go', '.h', '.hpp', '.html', '.java',
+  '.js', '.jsx', '.kt', '.kts', '.lua', '.php', '.proto', '.py', '.rb', '.rs', '.scss',
+  '.sh', '.sql', '.svelte', '.swift', '.toml', '.ts', '.tsx', '.vue', '.xml', '.zsh',
+])
+
+/** Browser-renderable image extensions served by `readWorkspaceFileBinary`. */
+const WORKSPACE_IMAGE_EXTENSIONS = new Set([
+  '.apng', '.avif', '.bmp', '.gif', '.ico', '.jpeg', '.jpg', '.png', '.svg', '.svgz',
+  '.webp',
+])
+
+/** Media types for {@link WORKSPACE_IMAGE_EXTENSIONS}; unknown leaves the file unservable. */
+const WORKSPACE_IMAGE_MEDIA_TYPES: Record<string, string> = {
+  '.apng': 'image/apng',
+  '.avif': 'image/avif',
+  '.bmp': 'image/bmp',
+  '.gif': 'image/gif',
+  '.ico': 'image/x-icon',
+  '.jpeg': 'image/jpeg',
+  '.jpg': 'image/jpeg',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.svgz': 'image/svg+xml',
+  '.webp': 'image/webp',
+}
+
+/** Whether a path is absolute in Host filesystem syntax. */
+function isHostAbsolutePath(path: string): boolean {
+  return path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path)
+}
+
+/** Decode a byte range as UTF-8, replacing stray bytes at range edges. */
+function decodeTextLenient(bytes: Uint8Array): string {
+  return new TextDecoder('utf-8', { fatal: false }).decode(bytes)
+}
+
+/** Best-effort preview class of a file from its extension. */
+function kindOfWorkspaceFile(path: string): SessionReadWorkspaceFileValue['kind'] {
+  const extension = extname(path).toLowerCase()
+  if (MARKDOWN_EXTENSIONS.has(extension)) return 'markdown'
+  if (JSON_EXTENSIONS.has(extension)) return 'json'
+  if (YAML_EXTENSIONS.has(extension)) return 'yaml'
+  if (CODE_EXTENSIONS.has(extension)) return 'code'
+  return 'text'
+}
+
 declare module '@deepseek-ai/cordis' {
   interface Context {
     /** Host Session business API and Remote namespace owner. */
@@ -70,6 +143,10 @@ export interface Config {
   readonly coldBlankProbeMaxBytes?: number
   /** Override platform desktop-opener detection. */
   readonly nativeOpen?: boolean
+  /** Inclusive byte cap for one `readWorkspaceFile` chunk (default 256 KiB). */
+  readonly workspaceFileChunkBytes?: number
+  /** Inclusive byte cap for one `readWorkspaceFileBinary` image (default 8 MiB). */
+  readonly workspaceImageMaxBytes?: number
 }
 
 /** Host integrations replaceable by direct unit tests. */
@@ -86,6 +163,7 @@ export class SessionController extends TypertRemoteService {
     'agentDefaultModel',
     'agents',
     'attachments',
+    'fs',
     'llm',
     'sessions',
     'sessionProjections',
@@ -97,10 +175,12 @@ export class SessionController extends TypertRemoteService {
   static Config: z<Config> = z.object({
     coldBlankProbeMaxBytes: z.natural().default(DEFAULT_COLD_BLANK_PROBE_MAX_BYTES),
     nativeOpen: z.boolean(),
+    workspaceFileChunkBytes: z.natural().min(1024).max(1048576).default(DEFAULT_WORKSPACE_FILE_CHUNK_BYTES),
   })
 
   private readonly agents: ApiSessionAgentController
   private readonly commands: SessionCommandController
+  private readonly config: Config
   private readonly controlState: SessionControlController
   private readonly history: SessionHistoryController
   private readonly listState: ApiSessionList
@@ -115,6 +195,7 @@ export class SessionController extends TypertRemoteService {
   constructor(ctx: Context, config: Config, internals: SessionControllerInternals = {}) {
     super(ctx, 'sessionController', { namespace: 'session' })
     installModelSelectionProjection(ctx)
+    this.config = config
     this.agents = new ApiSessionAgentController(ctx)
     this.commands = new SessionCommandController(ctx, this.agents, process.cwd())
     this.controlState = new SessionControlController(ctx)
@@ -294,6 +375,147 @@ export class SessionController extends TypertRemoteService {
         `path open failed: ${error instanceof Error ? error.message : String(error)}`,
         {},
       )
+    }
+  }
+
+  /**
+   * Read one byte range of a file for in-page preview. The file must be a
+   * regular file on the Session's own filesystem, so the readable set is the
+   * same one the Session's own agent tools can touch. Relative paths are
+   * rejected; the caller resolves against the Session workspace first.
+   * @param request - absolute path plus the zero-based byte range to read.
+   * @param signal - caller lifetime; abort terminates the read.
+   * @returns the decoded text chunk and file metadata; binary files return
+   *   metadata only with an empty content.
+   * @throws TypertRemoteFailure when the path is invalid, absent, not a regular
+   *   file, or the read fails.
+   */
+  @Remote('readWorkspaceFile')
+  async readWorkspaceFile(
+    request: SessionReadWorkspaceFileRequest,
+    signal: AbortSignal,
+  ): Promise<SessionReadWorkspaceFileValue> {
+    const chunkBytes = this.config.workspaceFileChunkBytes ?? DEFAULT_WORKSPACE_FILE_CHUNK_BYTES
+    const offset = request.offset ?? 0
+    const limit = request.limit === undefined ? chunkBytes : Math.min(request.limit, chunkBytes)
+    if (request.path.length === 0 || !isHostAbsolutePath(request.path)) {
+      throw new TypertRemoteFailure({
+        code: 'bad-request',
+        message: 'session.readWorkspaceFile requires an absolute non-empty path',
+        details: {},
+      })
+    }
+    if (!Number.isSafeInteger(offset) || offset < 0) {
+      throw new TypertRemoteFailure({
+        code: 'bad-request',
+        message: 'session.readWorkspaceFile offset must be a non-negative integer',
+        details: {},
+      })
+    }
+    if (!Number.isSafeInteger(limit) || limit < 1) {
+      throw new TypertRemoteFailure({
+        code: 'bad-request',
+        message: 'session.readWorkspaceFile limit must be a positive integer',
+        details: {},
+      })
+    }
+    signal.throwIfAborted()
+    const fs = this.ctx.fs
+    const target = await fs.resolve(request.path, { signal })
+    const info = await fs.stat(target, signal)
+    if (info === undefined) {
+      throw new TypertRemoteFailure({
+        code: 'not-found',
+        message: `session.readWorkspaceFile: "${target.displayPath}" does not exist`,
+        details: {},
+      })
+    }
+    if (info.type !== 'file') {
+      throw new TypertRemoteFailure({
+        code: 'bad-request',
+        message: `session.readWorkspaceFile: "${target.displayPath}" is not a regular file`,
+        details: {},
+      })
+    }
+    const bytes = await fs.readBytesRange(target, offset, limit, signal)
+    const binary = bytes.subarray(0, BINARY_SAMPLE_BYTES).includes(0)
+    const totalSize = info.size
+    return {
+      content: binary ? '' : decodeTextLenient(bytes),
+      kind: binary ? 'binary' : kindOfWorkspaceFile(request.path),
+      size: bytes.byteLength,
+      ...totalSize === undefined ? {} : { totalSize },
+      offset,
+      eof: bytes.byteLength < limit || (totalSize !== undefined && offset + bytes.byteLength >= totalSize),
+    }
+  }
+
+  /**
+   * Read one whole browser-renderable image for in-page preview. Only the
+   * image extensions in {@link WORKSPACE_IMAGE_EXTENSIONS} are served, and the
+   * file must be an existing regular file on the Session's own filesystem —
+   * the same readable set the Session's own agent tools can touch. Relative
+   * paths are rejected; the caller resolves against the Session workspace
+   * first. A file past the configured {@link Config.workspaceImageMaxBytes}
+   * cap is refused rather than shipped to the browser in full.
+   * @param request - absolute path of the image file to read.
+   * @param signal - caller lifetime; abort terminates the read.
+   * @returns the media type and base64-encoded whole-file bytes.
+   * @throws TypertRemoteFailure when the path is invalid, unsupported, absent,
+   *   oversized, not a regular file, or the read fails.
+   */
+  @Remote('readWorkspaceFileBinary')
+  async readWorkspaceFileBinary(
+    request: SessionReadWorkspaceFileBinaryRequest,
+    signal: AbortSignal,
+  ): Promise<SessionReadWorkspaceFileBinaryValue> {
+    const maxBytes = this.config.workspaceImageMaxBytes ?? DEFAULT_WORKSPACE_IMAGE_MAX_BYTES
+    if (request.path.length === 0 || !isHostAbsolutePath(request.path)) {
+      throw new TypertRemoteFailure({
+        code: 'bad-request',
+        message: 'session.readWorkspaceFileBinary requires an absolute non-empty path',
+        details: {},
+      })
+    }
+    const extension = extname(request.path).toLowerCase()
+    const mediaType = WORKSPACE_IMAGE_MEDIA_TYPES[extension]
+    if (mediaType === undefined || !WORKSPACE_IMAGE_EXTENSIONS.has(extension)) {
+      throw new TypertRemoteFailure({
+        code: 'bad-request',
+        message: `session.readWorkspaceFileBinary: "${extension || '(no extension)'}" is not a renderable image`,
+        details: {},
+      })
+    }
+    signal.throwIfAborted()
+    const fs = this.ctx.fs
+    const target = await fs.resolve(request.path, { signal })
+    const info = await fs.stat(target, signal)
+    if (info === undefined) {
+      throw new TypertRemoteFailure({
+        code: 'not-found',
+        message: `session.readWorkspaceFileBinary: "${target.displayPath}" does not exist`,
+        details: {},
+      })
+    }
+    if (info.type !== 'file') {
+      throw new TypertRemoteFailure({
+        code: 'bad-request',
+        message: `session.readWorkspaceFileBinary: "${target.displayPath}" is not a regular file`,
+        details: {},
+      })
+    }
+    if (info.size !== undefined && info.size > maxBytes) {
+      throw new TypertRemoteFailure({
+        code: 'too-large',
+        message: `session.readWorkspaceFileBinary: "${target.displayPath}" exceeds the ${maxBytes}-byte preview cap`,
+        details: {},
+      })
+    }
+    const bytes = await fs.readBytesRange(target, 0, Math.min(maxBytes + 1, info.size ?? maxBytes + 1), signal)
+    return {
+      mediaType,
+      data: bytesToBase64(bytes),
+      size: bytes.byteLength,
     }
   }
 

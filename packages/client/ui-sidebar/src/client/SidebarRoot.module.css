@@ -333,6 +333,11 @@
 
 .footerActions {
   display: flex;
+  /* Multiple plug-in footer actions stack onto their own rows instead of
+     squeezing side by side in the 280px-wide rail (each occupant owns its
+     inline content width; the wrap only reacts to layout pressure). */
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .collapsed .footArea {

@@ -358,6 +358,52 @@ export interface SessionOpenWorkspacePathValue {
   readonly opened: true
 }
 
+/**
+ * One byte-range read of a file the Session's own filesystem can see, for
+ * in-page preview instead of a desktop open. Relative paths are rejected: the
+ * caller resolves against the Session workspace before calling.
+ */
+export interface SessionReadWorkspaceFileRequest {
+  /** Absolute Host filesystem path, in backend syntax. */
+  readonly path: string
+  /** Zero-based inclusive start byte; defaults to 0. */
+  readonly offset?: number
+  /** Inclusive byte cap on this range; defaults to the deployment chunk size. */
+  readonly limit?: number
+}
+
+/** One chunk of a previewed file, without binary content. */
+export interface SessionReadWorkspaceFileValue {
+  /** Decoded UTF-8 text of this range; empty for binary or an empty range. */
+  readonly content: string
+  /** Best-effort content class derived from the file extension. */
+  readonly kind: 'markdown' | 'code' | 'json' | 'yaml' | 'text' | 'binary'
+  /** Bytes actually returned for this range. */
+  readonly size: number
+  /** Total file size when the backend reports one; absent for size-less backends. */
+  readonly totalSize?: number
+  /** Zero-based start byte of this range (echo of the request). */
+  readonly offset: number
+  /** Whether this range reaches the end of the file. */
+  readonly eof: boolean
+}
+
+/** Whole-file image read for in-page rendering (browser-preview arms only). */
+export interface SessionReadWorkspaceFileBinaryRequest {
+  /** Absolute Host filesystem path, in backend syntax. */
+  readonly path: string
+}
+
+/** One whole image file, base64-encoded on the wire like attachment bytes. */
+export interface SessionReadWorkspaceFileBinaryValue {
+  /** MIME media type derived from the file extension. */
+  readonly mediaType: string
+  /** Base64-encoded file bytes (UTF-8 base64 alphabet, no whitespace). */
+  readonly data: string
+  /** Total file size in bytes. */
+  readonly size: number
+}
+
 /** Client-minted prompt identity used to reconcile optimistic and durable messages. */
 export type SessionRequestId = Branded<'session-request-id'>
 

@@ -24,6 +24,8 @@ describe('tails', () => {
         ]}
         streaming
         renderMessageImages={renderMessageImages}
+        markdownView="render"
+        resolveImage={() => undefined}
       />,
     )
     expect(view.getByText('思考')).toBeTruthy()
@@ -36,6 +38,8 @@ describe('tails', () => {
         streaming={false}
         interrupted
         renderMessageImages={renderMessageImages}
+        markdownView="render"
+        resolveImage={() => undefined}
       />,
     )
     expect(stopped.getByText('已停止')).toBeTruthy()
@@ -50,11 +54,13 @@ describe('tails', () => {
         blocks={[{ kind: 'tool-call', callId: 'c', name: 'todo_write', argsRaw: '{}' }]}
         streaming={false}
         renderMessageImages={renderMessageImages}
+        markdownView="render"
+        resolveImage={() => undefined}
       />,
     )
     expect(empty.container.firstChild).toBeNull()
     const blank = render(
-      <AssistantMarkdown t={t} blocks={[]} streaming={false} renderMessageImages={renderMessageImages} />,
+      <AssistantMarkdown t={t} blocks={[]} streaming={false} renderMessageImages={renderMessageImages} markdownView="render" resolveImage={() => undefined} />,
     )
     expect(blank.container.firstChild).toBeNull()
   })

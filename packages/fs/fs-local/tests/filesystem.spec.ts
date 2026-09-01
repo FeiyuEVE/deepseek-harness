@@ -308,6 +308,43 @@ describe('readBytes', () => {
   })
 })
 
+describe('readBytesRange', () => {
+  const body = Buffer.from('0123456789abcdefghij')
+
+  it('reads a middle range and clamps the last range to the file end', async () => {
+    await writeFile(join(dir, 'a.bin'), body)
+    const target = await fs.resolve('a.bin')
+    expect(Buffer.from(await fs.readBytesRange(target, 5, 5))).toEqual(Buffer.from('56789'))
+    expect(Buffer.from(await fs.readBytesRange(target, 15, 100))).toEqual(Buffer.from('fghij'))
+  })
+
+  it('returns empty for a start past the file end and for an empty file', async () => {
+    await writeFile(join(dir, 'a.bin'), body)
+    expect((await fs.readBytesRange(await fs.resolve('a.bin'), body.length + 1, 10)).length).toBe(0)
+    await writeFile(join(dir, 'empty.bin'), Buffer.alloc(0))
+    expect((await fs.readBytesRange(await fs.resolve('empty.bin'), 0, 10)).length).toBe(0)
+  })
+
+  it('returns raw bytes without decoding or NUL rejection', async () => {
+    const raw = Buffer.from([0x68, 0x00, 0x69, 0xff, 0x62])
+    await writeFile(join(dir, 'a.bin'), raw)
+    expect(Buffer.from(await fs.readBytesRange(await fs.resolve('a.bin'), 2, 3))).toEqual(Buffer.from([0x69, 0xff, 0x62]))
+  })
+
+  it('rejects a missing file and a directory', async () => {
+    await expect(fs.readBytesRange(await fs.resolve('nope'), 0, 10)).rejects.toMatchObject({ code: 'FS_NOT_FOUND' })
+    await expect(fs.readBytesRange(await fs.resolve('.'), 0, 10)).rejects.toMatchObject({ code: 'FS_NOT_REGULAR_FILE' })
+  })
+
+  it('rejects an already-aborted signal with FS_ABORTED', async () => {
+    await writeFile(join(dir, 'a.bin'), body)
+    const controller = new AbortController()
+    controller.abort()
+    await expect(fs.readBytesRange(await fs.resolve('a.bin'), 0, 10, controller.signal))
+      .rejects.toMatchObject({ code: 'FS_ABORTED' })
+  })
+})
+
 describe('listDir', () => {
   it('lists files and directories in stable name order with resolved child targets', async () => {
     await mkdir(join(dir, 'skills', 'dir-skill'), { recursive: true })

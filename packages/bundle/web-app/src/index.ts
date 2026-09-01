@@ -55,6 +55,24 @@ export interface Config {
   surfaceContext: boolean
   /** Explicit `--trusted-host` authorities from this invocation. */
   trustedHosts: string[]
+  /**
+   * The decoupled self-rescue intake URL for the frontend error guard's
+   * fallback delivery (for example `http://127.0.0.1:18445/report` of the
+   * supervisor service), reached when the same-origin `/log-ingest` primary
+   * route is unavailable (the dsh web process itself is down). Empty keeps
+   * the guard on its in-profile `/client-error` fallback.
+   */
+  rescueIntakeUrl: string
+  /**
+   * The token public deployments issue to in-page error-guard reports.
+   * The guard cannot carry the deployment log token (it is a secret), so a
+   * deployment that wants token-guarded ingest on public routes (nginx edge
+   * accepts this value alongside the deployment token) injects it as the
+   * `__DSH_INGEST_TOKEN__` page global; the guard sends it as `X-Log-Token`
+   * on `/log-ingest` and `/rescue-intake/report`. Empty keeps the guard on
+   * its fallback behaviour (local loopback primary, remote skip).
+   */
+  ingestPageToken: string
 }
 
 export const Config: z<Config> = z.object({
@@ -62,6 +80,8 @@ export const Config: z<Config> = z.object({
   printUrl: z.boolean().default(true),
   surfaceContext: z.boolean().default(true),
   trustedHosts: z.array(String).default([]),
+  rescueIntakeUrl: z.string().default(''),
+  ingestPageToken: z.string().default(''),
 })
 
 /** Bind-dependent Web values shared by the trust fence and URL display. */
@@ -238,6 +258,22 @@ export function apply(ctx: Context, config: Config): void {
   const handoffBrowser = config.openBrowser && !launchedThroughSsh(ctx)
   // Release dependent rows only after bind-dependent trust has been sampled once.
   ctx.provide(WEB_RUNTIME_SERVICE, runtime)
+  if (config.rescueIntakeUrl !== '') {
+    // The catch-all error guard reads this global lazily at flush time, so
+    // the row may follow the guard in the injection table. The guard falls
+    // back to the decoupled self-rescue service when the same-origin
+    // /log-ingest primary route is unreachable.
+    ctx.on('webserver/index-inject', (table) => {
+      table.push({ kind: 'global', name: '__DSH_RESCUE_INTAKE__', value: config.rescueIntakeUrl })
+    })
+  }
+  if (config.ingestPageToken !== '') {
+    // Token-guarded public ingest: the in-page guard carries this token as
+    // X-Log-Token on /log-ingest and /rescue-intake/report (see Config).
+    ctx.on('webserver/index-inject', (table) => {
+      table.push({ kind: 'global', name: '__DSH_INGEST_TOKEN__', value: config.ingestPageToken })
+    })
+  }
   ctx.plugin(FrontendStatic, { distIndex: internals.resolveDistIndex() })
   if (config.surfaceContext) {
     ctx.inject(['systemPrompt'], (promptCtx) => {

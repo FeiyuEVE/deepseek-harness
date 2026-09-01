@@ -21,6 +21,8 @@ describe('ReasoningRow', () => {
         blocks={[{ kind: 'reasoning', text: 'Inspect the session\nNewest reasoning tokens' }]}
         streaming
         renderMessageImages={renderMessageImages}
+        markdownView="render"
+        resolveImage={() => undefined}
       />,
     )
     expect(view.getByText('运行中')).toBeTruthy()
@@ -33,6 +35,8 @@ describe('ReasoningRow', () => {
         blocks={[{ kind: 'reasoning', text: 'Inspect the session\nNewest reasoning tokens keep arriving' }]}
         streaming
         renderMessageImages={renderMessageImages}
+        markdownView="render"
+        resolveImage={() => undefined}
       />,
     )
     expect(view.getByText('Newest reasoning tokens keep arriving').parentElement
@@ -44,6 +48,8 @@ describe('ReasoningRow', () => {
         blocks={[{ kind: 'reasoning', text: 'Inspect the session\nNewest reasoning tokens keep arriving\n' }]}
         streaming={false}
         renderMessageImages={renderMessageImages}
+        markdownView="render"
+        resolveImage={() => undefined}
       />,
     )
     const settledSummary = view.getByText('Inspect the session')
@@ -58,6 +64,8 @@ describe('ReasoningRow', () => {
         blocks={[{ kind: 'reasoning', text: 'Inspect the session\nCheck persistence' }]}
         streaming={false}
         renderMessageImages={renderMessageImages}
+        markdownView="render"
+        resolveImage={() => undefined}
       />,
     )
     const row = view.getByRole('button')
@@ -77,6 +85,8 @@ describe('ReasoningRow', () => {
         blocks={[{ kind: 'reasoning', text: 'Inspect the session\nCheck persistence' }]}
         streaming={false}
         renderMessageImages={renderMessageImages}
+        markdownView="render"
+        resolveImage={() => undefined}
       />,
     )
     fireEvent.click(view.getByText('思考'))

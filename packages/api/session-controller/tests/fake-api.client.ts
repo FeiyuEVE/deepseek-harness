@@ -18,6 +18,8 @@ import type {
   SessionProjectionBaseline,
   SessionSelectModelRequest,
   SessionSelectModelValue,
+  SessionReadWorkspaceFileBinaryValue,
+  SessionReadWorkspaceFileValue,
 } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { WorkspaceRemote } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { WorkspaceFollowFrame } from '@deepseek-ai/dsh-api-workspace-controller/types'
@@ -147,6 +149,19 @@ export class FakeApiClient {
   onCancel: (payload: unknown) => Promise<RemoteResult<{ accepted: true }>> = () => Promise.resolve(ok({ accepted: true as const }))
   onOpenWorkspacePath: (payload: unknown) => Promise<RemoteResult<{ opened: true }>> =
     () => Promise.resolve(ok({ opened: true as const }))
+  onReadWorkspaceFile: (request: unknown, signal?: AbortSignal) => Promise<RemoteResult<SessionReadWorkspaceFileValue>> =
+    (request) => {
+      void request
+      return Promise.resolve(ok({
+        content: '', kind: 'text', size: 0, offset: 0, eof: true,
+      }))
+    }
+  onReadWorkspaceFileBinary: (request: unknown, signal?: AbortSignal) => Promise<RemoteResult<SessionReadWorkspaceFileBinaryValue>> =
+    (request, signal) => {
+      void request
+      void signal
+      return Promise.resolve(ok({ mediaType: 'image/png', data: 'aGk=', size: 2 }))
+    }
 
   private readonly followConns = new Map<SessionId, ValueStreamConn<SessionFollowFrame>[]>()
   private readonly controlConns: ValueStreamConn<SessionControlFrame>[] = []
@@ -231,6 +246,16 @@ export class FakeApiClient {
           'session.openWorkspacePath',
           payload,
           this.onOpenWorkspacePath(payload),
+        ),
+        readWorkspaceFile: (request, signal) => this.record(
+          'session.readWorkspaceFile',
+          request,
+          this.onReadWorkspaceFile(request, signal),
+        ),
+        readWorkspaceFileBinary: (request, signal) => this.record(
+          'session.readWorkspaceFileBinary',
+          request,
+          this.onReadWorkspaceFileBinary(request, signal),
         ),
         page: request => this.page(request),
         follow: (request, signal) => this.openFollow(request, signal),

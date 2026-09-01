@@ -27,9 +27,12 @@ import { StatsLine } from './chat/StatsLine.tsx'
 import { registerConversationNodes } from './conversation-nodes/register.ts'
 import { DetailsPanel } from './details/DetailsPanel.tsx'
 import { en, NS, zh } from './locale.ts'
+import { MarkdownViewRow, type MarkdownViewRowInjected } from './settings/MarkdownViewRow.tsx'
 import { TranscriptViewRow, type TranscriptViewRowInjected } from './settings/TranscriptViewRow.tsx'
 import { createChatStore } from './stores.ts'
+import { MarkdownViewPolicy } from './markdown-view.ts'
 import { TranscriptViewPolicy } from './transcript-view.ts'
+import { WorkspaceImageUrlCache, resolveWorkspaceImagePath } from './workspace-image.ts'
 import { CHAT_SETTINGS_NAMESPACE, type ChatSettings } from '../chat-settings.ts'
 import { useTurnDataValue } from './chat/use-turn-data.ts'
 
@@ -39,6 +42,13 @@ const CHAT_NODE_INJECT: ChatNodeTurnDataInjected = {
       return useTurnDataValue(data, key)
     },
   },
+}
+
+/** Handheld surfaces open files in-page: the mobile gateway's dedicated frontend or a mobile-device browser (LAN or gateway origin). */
+function isMobileSurface(): boolean {
+  if (typeof window === 'undefined') return false
+  return (window as { __DSH_MOBILE_FRONTEND__?: unknown }).__DSH_MOBILE_FRONTEND__ === 'dedicated'
+    || /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(window.navigator.userAgent)
 }
 
 /** Services required by the Chat target and its presentation registrations. */
@@ -76,7 +86,11 @@ export function apply(ctx: Context): void {
   const t = ctx.locale.bind(NS)
   const chatStore = createChatStore()
   const chatScrollPositions = new Map<SessionId, ChatScrollPosition>()
+  const workspaceImageCaches = new Map<SessionId, WorkspaceImageUrlCache>()
   const transcriptView = new TranscriptViewPolicy(
+    ctx.settingsScope.bind<ChatSettings>({ namespace: CHAT_SETTINGS_NAMESPACE }),
+  )
+  const markdownView = new MarkdownViewPolicy(
     ctx.settingsScope.bind<ChatSettings>({ namespace: CHAT_SETTINGS_NAMESPACE }),
   )
 
@@ -90,6 +104,17 @@ export function apply(ctx: Context): void {
       setTranscriptView: (mode) => { transcriptView.setMode(mode) },
     }),
   }, TranscriptViewRow))
+
+  ctx.slots.inject('settings.general.item', () => ctx.slots.register({
+    name: 'settings.general.item',
+    id: 'markdown-view',
+    order: 13,
+    locale: NS,
+    inject: (): MarkdownViewRowInjected => ({
+      hooks: { markdownView: markdownView.mode },
+      setMarkdownView: (mode) => { markdownView.setMode(mode) },
+    }),
+  }, MarkdownViewRow))
 
   ctx.slots.inject('conversation.view', () => {
     const disposeView = ctx.slots.register({
@@ -108,8 +133,29 @@ export function apply(ctx: Context): void {
         if (binding === undefined) throw new Error(`ui-chat: unknown session "${sessionId}"`)
         const session = binding.session
         const chat = chatSource(binding)
+        let imageCache = workspaceImageCaches.get(sessionId)
+        if (imageCache === undefined) {
+          imageCache = new WorkspaceImageUrlCache(
+            (request, signal) => ctx.remote.session.readWorkspaceFileBinary(request, signal),
+          )
+          workspaceImageCaches.set(sessionId, imageCache)
+          const releaseSession = binding.ctx
+          releaseSession?.effect(() => () => {
+            imageCache?.dispose()
+            workspaceImageCaches.delete(sessionId)
+          }, 'ui-chat workspace image cache')
+        }
+        const resolveWorkspaceImage = (src: string): string | undefined => {
+          const cwd = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd
+          const path = resolveWorkspaceImagePath(cwd, src)
+          return path === undefined ? undefined : imageCache?.peek(path)
+        }
         return {
-          hooks: { transcriptView: transcriptView.mode },
+          hooks: {
+            transcriptView: transcriptView.mode,
+            markdownView: markdownView.mode,
+            workspaceImages: imageCache.version,
+          },
           keyedHooks: {
             chatNode: key => chat.getSnapshot().nodes.source(key),
             chatNodeProcess: key => chat.getSnapshot().nodes.processSource(key),
@@ -121,11 +167,21 @@ export function apply(ctx: Context): void {
           fileMentions: (owner: TurnTailOwnerProps) => ctx.get('chatFileMentions')?.forClosing(owner),
           openFile: async (path) => {
             const cwd = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd
-            const result = await ctx.remote.session.openWorkspacePath({
-              path: resolveWorkspacePath(cwd, path),
-            })
+            const resolved = resolveWorkspacePath(cwd, path)
+            // Handheld surfaces (mobile gateway frontend or a mobile-device
+            // browser) open the file in-page instead of the desktop opener.
+            if (isMobileSurface()) {
+              actions.openFilePreview(resolved)
+              return
+            }
+            const result = await ctx.remote.session.openWorkspacePath({ path: resolved })
             if (!result.ok) throw new Error(`path open failed: ${result.error.message}`)
           },
+          readWorkspaceFile: (request, signal) =>
+            ctx.remote.session.readWorkspaceFile(request, signal),
+          readWorkspaceFileBinary: (request, signal) =>
+            ctx.remote.session.readWorkspaceFileBinary(request, signal),
+          resolveWorkspaceImage,
           loadOlder: () => { void session.loadOlder() },
           loadThrough: seq => session.loadThrough(seq),
           loadImage: Object.assign(

@@ -11,6 +11,7 @@ import type { ChatViewSlotProps } from '../contract/slots.ts'
 import type { ChatSnapshot } from '../contract/snapshot.ts'
 import { PendingSteeringBubble, PendingSubmissionBubble } from './MessageItem.tsx'
 import { ChatNodeSeat } from './ChatNodeSeat.tsx'
+import { FilePreviewHost } from './FilePreview.tsx'
 import { TurnNavigator } from './TurnNavigator.tsx'
 import { mergeTurnRailItems, type TurnRailItem } from './turn-rail-items.ts'
 import { formatRunDuration } from './message-chrome.ts'
@@ -216,8 +217,9 @@ const ChatNodeList = memo(function ChatNodeList({ order, ...seatProps }: ChatNod
  */
 export function ChatView({
   useSession, useChat, useChatNode, useChatNodeProcess, useSessions, useStore, actions, renderSlot,
-  sessionId, openFile, loadOlder, loadThrough, loadImage, openView, chatScroll, forkAt, fileMentions,
-  useTranscriptView, useProjection, t,
+  sessionId, openFile, readWorkspaceFile, readWorkspaceFileBinary, resolveWorkspaceImage, loadOlder,
+  loadThrough, loadImage, openView, chatScroll, forkAt, fileMentions,
+  useTranscriptView, useMarkdownView, useWorkspaceImages, useProjection, t,
 }: ChatViewSlotProps) {
   const order = useChat(s => s.order)
   const nodeStore = useChat(s => s.nodes)
@@ -243,6 +245,16 @@ export function ChatView({
   const loadingOlder = useSession(s => s.loadingOlder)
   const selectedCallId = useStore(s => s.selection?.callId)
   const compactTranscript = useTranscriptView(mode => mode === 'compact')
+  const markdownViewDefault = useMarkdownView(mode => mode)
+  // Re-render when a workspace image load settles: the resolver's peek then
+  // returns the cached URL and the alt-text fallback swaps to the image.
+  const workspaceImagesVersion = useWorkspaceImages(value => value)
+  const resolveImage = useCallback(
+    (src: string) => resolveWorkspaceImage(src),
+    // The version dependency drives identity: a fresh resolver per settled
+    // load lets the memoized Markdown renderers pick up the new URL.
+    [resolveWorkspaceImage, workspaceImagesVersion],
+  )
   const inspectCall = useCallback((callId: string) => {
     openView('trajectory', callId)
   }, [openView])
@@ -780,6 +792,8 @@ export function ChatView({
             useChatNodeProcess={useChatNodeProcess}
             historyIncomplete={hasMore}
             compactTranscript={compactTranscript}
+            markdownViewDefault={markdownViewDefault}
+            resolveImage={resolveImage}
             useStore={useStore}
             actions={actions}
             selectedCallId={selectedCallId}
@@ -842,6 +856,13 @@ export function ChatView({
           t={t}
         />
       )}
+      <FilePreviewHost
+        useStore={useStore}
+        actions={actions}
+        readWorkspaceFile={readWorkspaceFile}
+        readWorkspaceFileBinary={readWorkspaceFileBinary}
+        t={t}
+      />
     </div>
   )
 }

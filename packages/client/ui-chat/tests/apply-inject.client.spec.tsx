@@ -137,6 +137,24 @@ describe('Chat inject API', () => {
     await b.runtime.dispose()
   })
 
+  it('opens an in-page preview on mobile-device browsers instead of the desktop opener', async () => {
+    const b = await bench()
+    const { instance, injected } = b.chatViewApi(ROOT)
+    const original = window.navigator.userAgent
+    Object.defineProperty(window.navigator, 'userAgent', {
+      configurable: true,
+      value: 'Mozilla/5.0 (Linux; Android 13; Pixel 7) Mobile',
+    })
+    try {
+      await injected.openFile('src/a.ts')
+    } finally {
+      Object.defineProperty(window.navigator, 'userAgent', { configurable: true, value: original })
+    }
+    expect(b.openWorkspacePath).not.toHaveBeenCalled()
+    expect(instance.store.getSnapshot().filePreview).toEqual({ path: '/proj/src/a.ts' })
+    await b.runtime.dispose()
+  })
+
   it('fails loud when a Chat View inject resolves no Session', async () => {
     const b = await bench()
     const entry = b.runtime.slots.entries('conversation.view')[0]!

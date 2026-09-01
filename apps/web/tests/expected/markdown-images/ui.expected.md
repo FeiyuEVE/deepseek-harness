@@ -12,10 +12,13 @@
   - img
 - heading "Markdown images" [level=2]
 - paragraph:
-  - img "Remote test image"
+  - button "View full image":
+    - img "Remote test image"
 - paragraph: Local test image
 - paragraph: REMOTE_IMAGE_DONE
 - button "Copy":
+  - img
+- button "Show raw Markdown":
   - img
 - button "Good response":
   - img

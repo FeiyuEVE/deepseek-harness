@@ -1016,6 +1016,8 @@ describe('small branch tails', () => {
         blocks={[{ kind: 'reasoning', text: 'one-liner' }]}
         streaming={false}
         renderMessageImages={renderMessageImages}
+        markdownView="render"
+        resolveImage={() => undefined}
       />,
     )
     expect(view.getByText('one-liner')).toBeTruthy()

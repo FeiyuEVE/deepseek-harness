@@ -212,6 +212,21 @@ export abstract class FileSystem extends Service {
   abstract readBytes(target: FsTarget, signal: AbortSignal | undefined, maxBytes: number): Promise<Uint8Array>
 
   /**
+   * Read one byte range of a regular file without decoding or binary rejection.
+   * Backends seek to `offset` instead of buffering the file prefix, so
+   * scroll-style readers can page through arbitrarily large files. The range
+   * ends at `offset + limit` or the file end, whichever comes first; the
+   * returned length is the actual count. UTF-8 character boundaries are not
+   * preserved at either edge: the caller owns alignment tolerance.
+   * @param target - the resolved target to read.
+   * @param offset - inclusive zero-based start byte; past the file end returns empty.
+   * @param limit - inclusive byte cap on this range; must be a positive integer.
+   * @param signal - aborts the read.
+   * @returns the raw bytes in `[offset, offset + limit)`, clamped to the file end.
+   */
+  abstract readBytesRange(target: FsTarget, offset: number, limit: number, signal?: AbortSignal): Promise<Uint8Array>
+
+  /**
    * List direct children of a directory in stable name order. Returns resolved
    * child targets plus cheap metadata only; never reads file contents.
    * @param target - the resolved directory target.

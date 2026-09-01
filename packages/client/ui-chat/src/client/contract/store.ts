@@ -1,5 +1,7 @@
 /** Chat-owned selection state shared by the transcript and details panel. */
 
+import type { FilePreviewState } from '../file-preview.ts'
+
 /** Tool call identity as carried by Chat nodes. */
 export type ToolCallId = string
 
@@ -17,8 +19,16 @@ export interface TurnProcessViewEntry {
   readonly answerStep: number
 }
 
+/** Durable assistant message identity shared by the answer body and its tail chrome. */
+export type AssistantMessageId = string
+
 /** Per-Session state shared only by the Chat view and details surface. */
 export interface ChatStoreState {
   selection: SelectionTarget | null
   turnProcesses: TurnProcessViewEntry[]
+  /** Open in-page file preview; null when none is open. */
+  filePreview: FilePreviewState | null
+  /** Explicit per-message presentation overrides over the persisted default
+   *  (true = raw source, false = rendered); absent means the default governs. */
+  rawOverrides: Record<AssistantMessageId, boolean>
 }

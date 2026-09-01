@@ -9,8 +9,9 @@ import { pathToFileURL } from 'node:url'
 import { runInNewContext } from 'node:vm'
 import { Context, type Fiber } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { renderIndexInjections, type WebServer, type WebRoute } from '@deepseek-ai/dsh-host-webserver'
+import { renderIndexInjections, type IndexInjection, type WebServer, type WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import * as modulesClient from '../src/client/index.ts'
+import { ERROR_GUARD_ROW } from '../src/error-guard.ts'
 import { ClientModuleRegistry, bootInjections, orderByModuleGraph } from '../src/index.ts'
 import type { ClientModuleLoaderTarget, WebBootEntry, WebBootGraph } from '../src/client/index.ts'
 
@@ -203,6 +204,18 @@ describe('HTML bootstrap facade', () => {
     graph.batches.push({ phase: 'application', url: secondUrl, rev: 'app-2', entries: [secondId] })
     expect(bootInjections(graph).flatMap(row => row.kind === 'script-preload' ? [row.src] : []))
       .toEqual([APPLICATION_URL, secondUrl])
+  })
+
+  it('injects the error guard as the outermost index row, ahead of the facade', () => {
+    writeBuiltPackage(MODULES_ID, {})
+    const { context } = constructWithRoute([MODULES_ID])
+    const table: IndexInjection[] = []
+    context.emit('webserver/index-inject', table)
+    expect(table[0]).toEqual(ERROR_GUARD_ROW)
+    expect(table.length).toBeGreaterThan(1)
+    const rendered = renderIndexInjections('<head></head>', table)
+    expect(rendered.indexOf('window.__dshErrorGuard')).toBeGreaterThanOrEqual(0)
+    expect(rendered.indexOf('window.__dshErrorGuard')).toBeLessThan(rendered.indexOf('window.__ModuleLoader__='))
   })
 
   it('rejects a page that did not preload the modules bundle', () => {

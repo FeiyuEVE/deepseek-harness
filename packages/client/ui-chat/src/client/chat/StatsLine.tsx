@@ -2,7 +2,7 @@
 // Mounted on 'conversation.composer.dock' so it sticks with the composer in the
 // active conversation scrollport (see ConversationRoot data-conversation-scroll).
 
-import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { UseProjection } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
@@ -126,9 +126,21 @@ export interface StatsLineProps {
 const StatsLineContent = memo(function StatsLineContent({
   groups,
   line,
+  compact,
+  collapsed,
+  expanded,
+  onToggle,
+  t,
 }: {
   readonly groups: readonly string[]
   readonly line: string
+  /** Narrow viewports keep only the counts group until tapped. */
+  readonly compact: boolean
+  /** Compact and not expanded: only the counts group shows. */
+  readonly collapsed: boolean
+  readonly expanded: boolean
+  readonly onToggle: () => void
+  t: ChatViewSlotProps['t']
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null)
   const [truncated, setTruncated] = useState(false)
@@ -148,13 +160,27 @@ const StatsLineContent = memo(function StatsLineContent({
   useLayoutEffect(measure, [line, measure])
   return (
     <Tooltip label={line} side="top" delayMs={500} disabled={!truncated}>
-      <div ref={rootRef} className={css.root}>
+      <div
+        ref={rootRef}
+        className={[css.root, compact && css.compact, collapsed && css.collapsed].filter(Boolean).join(' ')}
+        onClick={compact ? onToggle : undefined}
+        role={compact ? 'button' : undefined}
+        aria-expanded={compact ? expanded : undefined}
+        aria-label={compact ? (expanded ? t('stats.collapse') : t('stats.expand')) : undefined}
+      >
         {groups.map((group, i) => (
           <Fragment key={group}>
             {i > 0 && <><span className={css.sep} aria-hidden>|</span>{' '}</>}
-            <span>{group}</span>
+            <span className={css.group}>{group}</span>
           </Fragment>
         ))}
+        {compact && (
+          <span className={css.toggle} aria-hidden>
+            <svg viewBox="0 0 16 16" width="14" height="14">
+              <path d="M4.6 6.2 8 9.6l3.4-3.4.9.9L8 11.4 3.7 7.1z" fill="currentColor" />
+            </svg>
+          </span>
+        )}
       </div>
     </Tooltip>
   )
@@ -205,5 +231,31 @@ export const StatsLine = memo(function StatsLine({ useChat, useProjection, t }: 
   }
   const line = groups.join(' | ')
   if (groups.length === 0) return null
-  return <StatsLineContent groups={groups} line={line} />
+  // Narrow viewports keep only the counts group ("2 轮 · 5 步") until tapped:
+  // the strip must not cost chat room on phones. Desktop always shows the
+  // whole line, and the toggle/role stays off it entirely.
+  const [compact, setCompact] = useState(
+    () => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      && window.matchMedia('(max-width: 640px)').matches,
+  )
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    const query = window.matchMedia('(max-width: 640px)')
+    const onChange = (event: MediaQueryListEvent) => setCompact(event.matches)
+    query.addEventListener('change', onChange)
+    return () => { query.removeEventListener('change', onChange) }
+  }, [])
+  const [expanded, setExpanded] = useState(false)
+  const collapsed = compact && !expanded
+  return (
+    <StatsLineContent
+      groups={groups}
+      line={line}
+      compact={compact}
+      collapsed={collapsed}
+      expanded={expanded}
+      onToggle={() => setExpanded(value => !value)}
+      t={t}
+    />
+  )
 })

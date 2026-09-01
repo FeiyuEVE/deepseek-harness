@@ -4,7 +4,12 @@ import { createChatStore } from '../src/client/stores.ts'
 describe('createChatStore', () => {
   it('starts without a selected Chat target', () => {
     const store = createChatStore().create()
-    expect(store.store.getSnapshot()).toEqual({ selection: null, turnProcesses: [] })
+    expect(store.store.getSnapshot()).toEqual({
+      selection: null,
+      turnProcesses: [],
+      filePreview: null,
+      rawOverrides: {},
+    })
   })
 
   it('selects and clears one Chat details target', () => {

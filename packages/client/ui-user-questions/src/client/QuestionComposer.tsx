@@ -134,6 +134,7 @@ function QuestionFlow({ pending, t, useStore, actions }: QuestionFlowProps) {
   const markdownLabels = useMemo(() => ({
     code: { copyLabel: t('copy'), copiedLabel: t('copied') },
     footnotes: t('markdown.footnotes'),
+    image: { open: t('markdown.image.open'), close: t('markdown.image.close') },
   }), [t])
   const initialProgress = useMemo<QuestionDraftProgress>(() => ({
     index: 0,

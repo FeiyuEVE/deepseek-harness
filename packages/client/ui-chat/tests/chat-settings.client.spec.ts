@@ -2,7 +2,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
 import { SettingsProvider, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import {
-  CHAT_SETTINGS_NAMESPACE, DEFAULT_TRANSCRIPT_VIEW_MODE, apply,
+  CHAT_SETTINGS_NAMESPACE, DEFAULT_MARKDOWN_VIEW_MODE, DEFAULT_TRANSCRIPT_VIEW_MODE, apply,
 } from '../src/index.ts'
 
 class MemorySettings extends SettingsProvider {
@@ -21,9 +21,15 @@ describe('ui-chat Host settings', () => {
     await fiber.await()
     const ns = CHAT_SETTINGS_NAMESPACE
 
-    expect(ctx.settings.get(ns)).toEqual({ transcriptView: DEFAULT_TRANSCRIPT_VIEW_MODE })
+    expect(ctx.settings.get(ns)).toEqual({
+      transcriptView: DEFAULT_TRANSCRIPT_VIEW_MODE,
+      markdownView: DEFAULT_MARKDOWN_VIEW_MODE,
+    })
     await ctx.settings.update(ns, { transcriptView: 'normal' })
-    expect(ctx.settings.get(ns)).toEqual({ transcriptView: 'normal' })
+    expect(ctx.settings.get(ns)).toEqual({
+      transcriptView: 'normal',
+      markdownView: DEFAULT_MARKDOWN_VIEW_MODE,
+    })
     await expect(ctx.settings.update(ns, { transcriptView: 'dense' })).rejects.toThrow()
 
     await fiber.dispose()

@@ -124,6 +124,11 @@ class RecordingFileSystem extends FileSystem {
     throw new Error('not needed in agent-instructions tests')
   }
 
+  override async readBytesRange(target: FsTarget, offset: number, limit: number): Promise<Uint8Array> {
+    const content = this.entries.get(target.targetKey)?.content ?? ''
+    return new TextEncoder().encode(content).slice(offset, offset + limit)
+  }
+
   override async streamText(target: FsTarget, signal?: AbortSignal): Promise<AsyncIterable<string>> {
     if (signal !== undefined) this.signals.push(signal)
     signal?.throwIfAborted()
