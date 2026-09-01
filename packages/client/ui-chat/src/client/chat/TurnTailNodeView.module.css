@@ -14,3 +14,10 @@
 .actions {
   margin-left: -6px;
 }
+
+/* Raw-view toggle pressed state: the message shows source, so the action
+   stays highlighted until the reader flips back to the rendered document. */
+.toggled {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}

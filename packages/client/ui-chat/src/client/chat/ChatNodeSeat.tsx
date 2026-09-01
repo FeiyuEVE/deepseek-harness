@@ -3,6 +3,8 @@ import { JsonBlock } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ChatNodeOwnerProps, ChatViewSlotProps } from '../contract/slots.ts'
 import type { ChatNode } from '../contract/chat-nodes.ts'
 import type { ChatNodeStore } from '../contract/snapshot.ts'
+import type { AssistantMessageId } from '../contract/store.ts'
+import type { MarkdownViewMode } from '../../chat-settings.ts'
 import {
   decodeTurnProcess, TURN_PROCESS_INDEPENDENT_KINDS, turnProcessGeneration,
   type TurnProcessSpec,
@@ -11,10 +13,14 @@ import { storedTurnProcessEntry } from '../stores.ts'
 import { useSearchableHidden } from './searchable-hidden.ts'
 import css from './ChatView.module.css'
 
-interface ChatNodeSeatProps extends ChatNodeOwnerProps {
+interface ChatNodeSeatProps extends Omit<ChatNodeOwnerProps, 'markdownView' | 'toggleMessageRaw'> {
   readonly nodeKey: string
   readonly historyIncomplete: boolean
   readonly compactTranscript: boolean
+  /** Persisted Markdown presentation before a per-message override. */
+  readonly markdownViewDefault: MarkdownViewMode
+  /** Workspace-aware Markdown image resolver (identity moves when a load settles). */
+  readonly resolveImage: (src: string) => string | undefined
   readonly useChat: ChatViewSlotProps['useChat']
   readonly useStore: ChatViewSlotProps['useStore']
   readonly actions: ChatViewSlotProps['actions']
@@ -78,11 +84,32 @@ function turnProcessLayout(
 
 /** Subscribe, apply Turn-process visibility, and dispatch one stable Context key. */
 export const ChatNodeSeat = memo(function ChatNodeSeat({
-  nodeKey, historyIncomplete, compactTranscript,
+  nodeKey, historyIncomplete, compactTranscript, markdownViewDefault, resolveImage,
   selectedCallId, cwd, openFile, inspectCall, forkAt,
   renderMessageImages, fileMentions, useChat, useStore, actions, renderSlot, t,
 }: ChatNodeSeatProps) {
   const node = useChat(snapshot => snapshot.nodes.get(nodeKey))
+  // The durable message identity shared by an answer body and its tail chrome:
+  // per-message raw overrides key on it, so both seats resolve one view. The
+  // cast mirrors the routedNode one below: the merge-extensible ChatNodeDataMap
+  // does not narrow through the defaulted generic union.
+  const messageId = useMemo(() => {
+    const current = node as ChatNode | undefined
+    if (current?.kind === 'assistant-step' && current.data.finalNode !== undefined) {
+      return current.data.finalNode.messageId
+    }
+    if (current?.kind === 'turn-tail' && current.data.closing !== null) {
+      return current.data.closing.finalNode.messageId
+    }
+    return undefined
+  }, [node])
+  const rawOverride = useStore(state => messageId === undefined ? undefined : state.rawOverrides[messageId])
+  const markdownView: MarkdownViewMode = rawOverride === undefined ? markdownViewDefault : rawOverride === true ? 'raw' : 'render'
+  const toggleMessageRaw = useCallback((message: AssistantMessageId) => {
+    // Flip the resolved presentation: the override then pins the opposite
+    // arm until toggled again (or the persisted default changes).
+    actions.setMessageRaw(message, markdownView !== 'raw')
+  }, [actions, markdownView])
   const processSignature = useChat((snapshot) => {
     const current = snapshot.nodes.get(nodeKey)
     const location = current?.location
@@ -184,9 +211,12 @@ export const ChatNodeSeat = memo(function ChatNodeSeat({
       renderMessageImages,
       fileMentions,
       turnProcess,
+      markdownView,
+      toggleMessageRaw,
+      resolveImage,
     }, [
     node, selectedCallId, cwd, openFile, inspectCall, forkAt,
-    renderMessageImages, fileMentions, turnProcess,
+    renderMessageImages, fileMentions, turnProcess, markdownView, toggleMessageRaw, resolveImage,
   ])
   if (routedNode === undefined || owner === null) return null
   const location = routedNode.location

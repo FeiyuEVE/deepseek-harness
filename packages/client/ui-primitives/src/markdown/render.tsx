@@ -16,7 +16,7 @@
  * may add node types this renderer has no mapping for.
  */
 
-import { Fragment, createElement } from 'react'
+import { Fragment, createElement, useState } from 'react'
 import type { Key, ReactNode } from 'react'
 import clsx from 'clsx'
 import type * as Md from 'mdast'
@@ -24,6 +24,7 @@ import type {} from 'mdast-util-math'
 import { normalizeUri } from 'micromark-util-sanitize-uri'
 import { CodeBlock } from './CodeBlock.tsx'
 import { renderTexToReact } from './katex.tsx'
+import { MarkdownImageZoom } from './MarkdownImageZoom.tsx'
 import type { PositionedBlock } from './incremental.ts'
 import css from './MarkdownText.module.css'
 
@@ -35,10 +36,19 @@ export interface MarkdownCodeLabels {
   copiedLabel: string
 }
 
+/** Image-viewer labels forwarded to zoomable Markdown images. */
+export interface MarkdownImageLabels {
+  /** Accessible label of the image button inviting the full-size preview. */
+  open: string
+  /** Accessible label of the open viewer's close control. */
+  close: string
+}
+
 /** Localized chrome for a Markdown document. */
 export interface MarkdownLabels {
   code: MarkdownCodeLabels
   footnotes: string
+  image: MarkdownImageLabels
 }
 
 function sanitizeUrl(url: string): string {
@@ -122,6 +132,16 @@ export interface MarkdownFileMentions {
 }
 
 /**
+ * Non-HTTP(S) image sources: the owner resolves one authored source to a
+ * displayable browser URL from its own workspace vocabulary. The renderer
+ * never guesses at what looks like a path; an unresolved source renders as
+ * inert alt text exactly as before.
+ * @param src - The authored destination, exactly as written.
+ * @returns A displayable URL, or undefined when the source stays inert.
+ */
+export type MarkdownImageResolver = (src: string) => string | undefined
+
+/**
  * One render pass's state: immutable options and targets plus the footnote
  * numbering accumulated in document order while references render.
  */
@@ -134,6 +154,8 @@ export interface MarkdownRenderContext {
   readonly inBlockquote?: boolean
   /** Inline-code file mentions; absent wherever no opener vocabulary exists. */
   readonly fileMentions: MarkdownFileMentions | undefined
+  /** Resolver for non-HTTP(S) image sources; the streaming arm never carries one. */
+  readonly resolveImage?: MarkdownImageResolver | undefined
   /** Inside an anchor's children: interactive mentions must not nest there. */
   readonly inLink?: boolean
   /** Reference targets visible to this pass. */
@@ -291,7 +313,7 @@ function renderNode(node: Md.RootContent, key: Key, context: MarkdownRenderConte
     case 'linkReference':
       return renderLinkReference(node, key, context)
     case 'image':
-      return renderImage(node.url, node.alt ?? '', key)
+      return renderImage(node.url, node.alt ?? '', key, context)
     case 'imageReference':
       return renderImageReference(node, key, context)
     case 'footnoteReference':
@@ -501,21 +523,66 @@ function inlineCodeHttpUrl(value: string): string | undefined {
   }
 }
 
-function renderImage(url: string, alt: string, key: Key): ReactNode {
-  const imageSrc = remoteImageUrl(sanitizeUrl(normalizeUri(url)))
-  if (imageSrc === undefined) {
+function renderImage(
+  url: string,
+  alt: string,
+  key: Key,
+  context: MarkdownRenderContext,
+): ReactNode {
+  const remote = remoteImageUrl(sanitizeUrl(normalizeUri(url)))
+  const resolved = remote ?? context.resolveImage?.(normalizeUri(url))
+  if (resolved === undefined) {
     return <span key={key} className={css.imageAlt}>{alt}</span>
   }
   return (
-    <img
+    <MarkdownImage
       key={key}
-      className={css.image}
-      src={imageSrc}
+      src={resolved}
       alt={alt}
-      loading="lazy"
-      decoding="async"
-      referrerPolicy="no-referrer"
+      labels={context.labels.image}
     />
+  )
+}
+
+/**
+ * One rendered Markdown image: the same `<img>` attributes as before inside a
+ * quiet icon-sized button, so tapping (or keyboard-activating) the image opens
+ * a full-size viewer — the compact inline size would otherwise make charts,
+ * screenshots, and SVG diagrams unreadable on handheld viewports.
+ */
+function MarkdownImage({ src, alt, labels }: {
+  src: string
+  alt: string
+  labels: MarkdownImageLabels
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button
+        type="button"
+        className={css.imageFrame}
+        aria-label={labels.open}
+        title={labels.open}
+        onClick={() => { setOpen(true) }}
+      >
+        <img
+          className={css.image}
+          src={src}
+          alt={alt}
+          loading="lazy"
+          decoding="async"
+          referrerPolicy="no-referrer"
+        />
+      </button>
+      {open && (
+        <MarkdownImageZoom
+          src={src}
+          alt={alt}
+          labels={labels}
+          onClose={() => { setOpen(false) }}
+        />
+      )}
+    </>
   )
 }
 
@@ -549,7 +616,7 @@ function renderImageReference(
 ): ReactNode {
   const definition = context.targets.definitions.get(node.identifier.toUpperCase())
   if (definition === undefined) return `![${node.alt ?? ''}${referenceSuffix(node)}`
-  return renderImage(definition.url, node.alt ?? '', key)
+  return renderImage(definition.url, node.alt ?? '', key, context)
 }
 
 function renderFootnoteReference(

@@ -24,7 +24,7 @@ describe('highlightToHtml', () => {
     expect(html).toContain('var(--shiki-')
   })
 
-  it.each([['ts'], ['js'], ['bash'], ['sh'], ['jsonc']])('resolves the %s alias', (alias) => {
+  it.each([['ts'], ['bash'], ['sh'], ['jsonc']])('resolves the %s alias', (alias) => {
     expect(highlightToHtml('x', alias)).toContain('shiki')
   })
 
@@ -33,23 +33,28 @@ describe('highlightToHtml', () => {
     expect(highlightToHtml('x', undefined)).toBeUndefined()
   })
 
-  // Every read-tool language hint whose grammar loads lazily (the boot set —
-  // ts/js/shell/sh/json — is covered above). Touching each one drives its own
-  // dynamic import thunk, so the whole LAZY_GRAMMARS table is exercised.
+  // Every language hint whose grammar loads lazily (the boot set — ts/bash/sh/
+  // json — is covered above). Touching each one drives its own dynamic import
+  // thunk, so the whole LAZY_GRAMMARS table is exercised.
   const LAZY_ALIASES = [
-    'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'cs', 'kotlin', 'swift', 'php',
-    'yaml', 'toml', 'ini', 'md', 'mdx', 'html', 'css', 'scss', 'less', 'sql',
-    'xml', 'lua',
+    'js', 'jsx', 'tsx', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'cs', 'kotlin', 'swift',
+    'php', 'dart', 'svelte', 'vue', 'astro', 'coffee', 'ps1', 'bat', 'diff', 'dockerfile',
+    'make', 'cmake', 'nginx', 'graphql', 'proto', 'r', 'scala', 'perl', 'hs', 'clj', 'ex',
+    'erl', 'groovy', 'jl', 'zig', 'nim', 'ml', 'sol', 'jsonnet', 'tf', 'hcl', 'objc', 'fs',
+    'tex', 'typst', 'mermaid', 'prisma', 'nix', 'glsl', 'vim', 'csv', 'properties',
+    'yaml', 'toml', 'ini', 'md', 'mdx', 'html', 'css', 'scss', 'less', 'sql', 'xml', 'lua',
   ]
 
-  it('lazily loads every read-card grammar: plain first, highlighted after load', async () => {
+  // Every alias's import thunk runs concurrently under the full suite, so the
+  // whole grammar set can take longer than the default 5s test budget.
+  it('lazily loads every grammar: plain first, highlighted after load', async () => {
     // First touch returns the plain fallback (undefined) and starts the import.
     for (const alias of LAZY_ALIASES) expect(highlightToHtml('x', alias)).toBeUndefined()
     // Once every grammar has registered, the same call highlights.
     await vi.waitFor(() => {
       for (const alias of LAZY_ALIASES) expect(highlightToHtml('x', alias)).toContain('shiki')
-    }, { timeout: 5_000 })
-  })
+    }, { timeout: 10_000 })
+  }, 30_000)
 })
 
 describe('CodeBlock', () => {

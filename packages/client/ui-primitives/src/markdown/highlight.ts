@@ -7,14 +7,14 @@
  *
  * Only the three markdown-fence and `run_code` grammars (TypeScript, shell,
  * JSON) load into the singleton at boot — the set every session renders. The
- * read card's wider extension set (the file-extension language hints the read
- * tool's `langFromPath` emits — `packages/fs/tool-fs`: python, rust, yaml,
- * markup, …) is imported lazily and registered the first time such a language
- * is requested, so a session that never opens a read card in one of those
- * languages pays neither the ~1.6 MB of grammar modules nor their synchronous
- * init. The first render of a lazy language falls back to plain text while its
- * grammar loads, then {@link onGrammarLoaded} notifies subscribers to re-render
- * with highlighting. An unknown or absent language falls back to plain text (no
+ * broader language set (markdown fences plus the file-extension language hints
+ * the read tool's `langFromPath` emits — `packages/fs/tool-fs`: python, rust,
+ * yaml, markup, …) is imported lazily and registered the first time such a
+ * language is requested, so a session that never renders one of those
+ * languages pays neither the grammar modules nor their synchronous init. The
+ * first render of a lazy language falls back to plain text while its grammar
+ * loads, then {@link onGrammarLoaded} notifies subscribers to re-render with
+ * highlighting. An unknown or absent language falls back to plain text (no
  * highlighting, still monospace) — never an error.
  */
 
@@ -32,18 +32,17 @@ type LangModule = { default: typeof langTs }
 
 /**
  * Grammars the singleton loads at boot; each entry's own `name` is the id
- * `codeToTokens`/`codeToHtml` resolve. The JS-family aliases (js/jsx/ts/tsx)
- * resolve to the TypeScript grammar rather than a separate one: it tokenizes
- * plain TS/JS exactly, and JSX/TSX approximately (shiki's TS grammar is not the
- * dedicated TSX grammar, so JSX elements tokenize imperfectly) — an accepted
- * trade to keep the boot set to one JS-family grammar. The read card's wider
- * set loads lazily through {@link LAZY_GRAMMARS}.
+ * `codeToTokens`/`codeToHtml` resolve. The JS-family aliases in
+ * {@link LANG_ALIASES} resolve per flavor: `typescript`/`ts` here, and the
+ * dedicated `javascript`/`jsx`/`tsx` grammars in {@link LAZY_GRAMMARS} (shiki
+ * tokenizes plain JS more precisely with its own grammar than with the
+ * TypeScript one, and JSX/TSX need their dedicated grammars for JSX elements).
  */
 const LANGS = [langTs, langBash, langJson]
 
 /**
- * The read card's extension grammars, each behind a dynamic import so its
- * module stays out of the boot chunk until a read of that language renders.
+ * The extended language grammars, each behind a dynamic import so its module
+ * stays out of the boot chunk until a fence or read of that language renders.
  * Keyed by the grammar id (`LanguageRegistration.name`) the aliases resolve to.
  * `@shikijs/langs`' default export is a `LanguageRegistration[]`; the loader
  * hands the whole array to `loadLanguageSync`, which registers each entry
@@ -51,6 +50,9 @@ const LANGS = [langTs, langBash, langJson]
  * already loaded, so no alias value ever points at a missing entry here.
  */
 const LAZY_GRAMMARS = new Map<string, () => Promise<LangModule>>([
+  ['javascript', () => import('@shikijs/langs/javascript')],
+  ['jsx', () => import('@shikijs/langs/jsx')],
+  ['tsx', () => import('@shikijs/langs/tsx')],
   ['python', () => import('@shikijs/langs/python')],
   ['ruby', () => import('@shikijs/langs/ruby')],
   ['go', () => import('@shikijs/langs/go')],
@@ -62,6 +64,47 @@ const LAZY_GRAMMARS = new Map<string, () => Promise<LangModule>>([
   ['kotlin', () => import('@shikijs/langs/kotlin')],
   ['swift', () => import('@shikijs/langs/swift')],
   ['php', () => import('@shikijs/langs/php')],
+  ['dart', () => import('@shikijs/langs/dart')],
+  ['svelte', () => import('@shikijs/langs/svelte')],
+  ['vue', () => import('@shikijs/langs/vue')],
+  ['astro', () => import('@shikijs/langs/astro')],
+  ['coffee', () => import('@shikijs/langs/coffee')],
+  ['powershell', () => import('@shikijs/langs/powershell')],
+  ['batch', () => import('@shikijs/langs/batch')],
+  ['diff', () => import('@shikijs/langs/diff')],
+  ['docker', () => import('@shikijs/langs/docker')],
+  ['makefile', () => import('@shikijs/langs/makefile')],
+  ['cmake', () => import('@shikijs/langs/cmake')],
+  ['nginx', () => import('@shikijs/langs/nginx')],
+  ['graphql', () => import('@shikijs/langs/graphql')],
+  ['protobuf', () => import('@shikijs/langs/protobuf')],
+  ['r', () => import('@shikijs/langs/r')],
+  ['scala', () => import('@shikijs/langs/scala')],
+  ['perl', () => import('@shikijs/langs/perl')],
+  ['haskell', () => import('@shikijs/langs/haskell')],
+  ['clojure', () => import('@shikijs/langs/clojure')],
+  ['elixir', () => import('@shikijs/langs/elixir')],
+  ['erlang', () => import('@shikijs/langs/erlang')],
+  ['groovy', () => import('@shikijs/langs/groovy')],
+  ['julia', () => import('@shikijs/langs/julia')],
+  ['zig', () => import('@shikijs/langs/zig')],
+  ['nim', () => import('@shikijs/langs/nim')],
+  ['ocaml', () => import('@shikijs/langs/ocaml')],
+  ['solidity', () => import('@shikijs/langs/solidity')],
+  ['jsonnet', () => import('@shikijs/langs/jsonnet')],
+  ['terraform', () => import('@shikijs/langs/terraform')],
+  ['hcl', () => import('@shikijs/langs/hcl')],
+  ['objective-c', () => import('@shikijs/langs/objective-c')],
+  ['fsharp', () => import('@shikijs/langs/fsharp')],
+  ['latex', () => import('@shikijs/langs/latex')],
+  ['typst', () => import('@shikijs/langs/typst')],
+  ['mermaid', () => import('@shikijs/langs/mermaid')],
+  ['prisma', () => import('@shikijs/langs/prisma')],
+  ['nix', () => import('@shikijs/langs/nix')],
+  ['glsl', () => import('@shikijs/langs/glsl')],
+  ['vim', () => import('@shikijs/langs/vim')],
+  ['csv', () => import('@shikijs/langs/csv')],
+  ['properties', () => import('@shikijs/langs/properties')],
   ['yaml', () => import('@shikijs/langs/yaml')],
   ['toml', () => import('@shikijs/langs/toml')],
   ['ini', () => import('@shikijs/langs/ini')],
@@ -83,17 +126,18 @@ const LAZY_GRAMMARS = new Map<string, () => Promise<LangModule>>([
  * inherited property and crashing the renderer inside shiki. Keys cover both
  * the markdown-fence aliases `CodeBlock` uses and the file-extension hint ids
  * the read tool's `langFromPath` emits, so both callers resolve the same
- * grammars. The JS family maps to the TypeScript grammar (see {@link LANGS} for
- * the JSX/TSX approximation). A value not in {@link LANGS} names a
+ * grammars. A value not in {@link LANGS} names a
  * {@link LAZY_GRAMMARS} entry loaded on first use.
  */
 const LANG_ALIASES = new Map<string, string>([
   ['typescript', 'typescript'],
   ['ts', 'typescript'],
-  ['tsx', 'typescript'],
-  ['javascript', 'typescript'],
-  ['js', 'typescript'],
-  ['jsx', 'typescript'],
+  ['tsx', 'tsx'],
+  ['javascript', 'javascript'],
+  ['js', 'javascript'],
+  ['mjs', 'javascript'],
+  ['cjs', 'javascript'],
+  ['jsx', 'jsx'],
   ['shellscript', 'shellscript'],
   ['bash', 'shellscript'],
   ['sh', 'shellscript'],
@@ -101,6 +145,7 @@ const LANG_ALIASES = new Map<string, string>([
   ['zsh', 'shellscript'],
   ['json', 'json'],
   ['jsonc', 'json'],
+  ['json5', 'json'],
   ['py', 'python'],
   ['python', 'python'],
   ['rb', 'ruby'],
@@ -111,11 +156,78 @@ const LANG_ALIASES = new Map<string, string>([
   ['java', 'java'],
   ['c', 'c'],
   ['cpp', 'cpp'],
+  ['cc', 'cpp'],
+  ['h', 'c'],
   ['cs', 'csharp'],
   ['csharp', 'csharp'],
   ['kotlin', 'kotlin'],
+  ['kt', 'kotlin'],
   ['swift', 'swift'],
   ['php', 'php'],
+  ['dart', 'dart'],
+  ['svelte', 'svelte'],
+  ['vue', 'vue'],
+  ['astro', 'astro'],
+  ['coffee', 'coffee'],
+  ['coffeescript', 'coffee'],
+  ['powershell', 'powershell'],
+  ['ps1', 'powershell'],
+  ['batch', 'batch'],
+  ['bat', 'batch'],
+  ['cmd', 'batch'],
+  ['diff', 'diff'],
+  ['docker', 'docker'],
+  ['dockerfile', 'docker'],
+  ['makefile', 'makefile'],
+  ['make', 'makefile'],
+  ['cmake', 'cmake'],
+  ['nginx', 'nginx'],
+  ['graphql', 'graphql'],
+  ['gql', 'graphql'],
+  ['protobuf', 'protobuf'],
+  ['proto', 'protobuf'],
+  ['r', 'r'],
+  ['scala', 'scala'],
+  ['perl', 'perl'],
+  ['pl', 'perl'],
+  ['haskell', 'haskell'],
+  ['hs', 'haskell'],
+  ['clojure', 'clojure'],
+  ['clj', 'clojure'],
+  ['elixir', 'elixir'],
+  ['ex', 'elixir'],
+  ['exs', 'elixir'],
+  ['erlang', 'erlang'],
+  ['erl', 'erlang'],
+  ['groovy', 'groovy'],
+  ['gvy', 'groovy'],
+  ['julia', 'julia'],
+  ['jl', 'julia'],
+  ['zig', 'zig'],
+  ['nim', 'nim'],
+  ['ocaml', 'ocaml'],
+  ['ml', 'ocaml'],
+  ['solidity', 'solidity'],
+  ['sol', 'solidity'],
+  ['jsonnet', 'jsonnet'],
+  ['terraform', 'terraform'],
+  ['tf', 'terraform'],
+  ['hcl', 'hcl'],
+  ['objective-c', 'objective-c'],
+  ['objc', 'objective-c'],
+  ['fsharp', 'fsharp'],
+  ['fs', 'fsharp'],
+  ['latex', 'latex'],
+  ['tex', 'latex'],
+  ['typst', 'typst'],
+  ['mermaid', 'mermaid'],
+  ['prisma', 'prisma'],
+  ['nix', 'nix'],
+  ['glsl', 'glsl'],
+  ['vim', 'vim'],
+  ['viml', 'vim'],
+  ['csv', 'csv'],
+  ['properties', 'properties'],
   ['yaml', 'yaml'],
   ['yml', 'yaml'],
   ['toml', 'toml'],

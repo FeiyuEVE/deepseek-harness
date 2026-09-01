@@ -18,6 +18,7 @@ import type {
   SessionProjectionBaseline,
   SessionSelectModelRequest,
   SessionSelectModelValue,
+  SessionReadWorkspaceFileBinaryValue,
   SessionReadWorkspaceFileValue,
 } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { WorkspaceRemote } from '@deepseek-ai/dsh-api-workspace-controller/client'
@@ -164,6 +165,12 @@ export class FakeApiClient {
         content: '', kind: 'text', size: 0, offset: 0, eof: true,
       }))
     }
+  onReadWorkspaceFileBinary: (request: unknown, signal?: AbortSignal) => Promise<RemoteResult<SessionReadWorkspaceFileBinaryValue>> =
+    (request, signal) => {
+      void request
+      void signal
+      return Promise.resolve(remoteOk({ mediaType: 'image/png', data: 'aGk=', size: 2 }))
+    }
 
   private readonly followConns = new Map<SessionId, ValueStreamConn<SessionFollowFrame>[]>()
   private readonly controlConns: ValueStreamConn<SessionControlFrame>[] = []
@@ -253,6 +260,11 @@ export class FakeApiClient {
           'session.readWorkspaceFile',
           request,
           this.onReadWorkspaceFile(request, signal),
+        ),
+        readWorkspaceFileBinary: (request, signal) => this.record(
+          'session.readWorkspaceFileBinary',
+          request,
+          this.onReadWorkspaceFileBinary(request, signal),
         ),
         page: request => this.page(request),
         follow: (request, signal) => this.openFollow(request, signal),

@@ -270,6 +270,21 @@
   font-style: italic;
 }
 
+/* The image button keeps the old <img> box: block, shrink-to-fit, rounded.
+   The img inside retains its own `image` sizing, so the DOM wrapper adds no
+   visible chrome beyond the quiet zoom cursor. */
+.imageFrame {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  cursor: zoom-in;
+}
+
 .image {
   display: block;
   width: auto;

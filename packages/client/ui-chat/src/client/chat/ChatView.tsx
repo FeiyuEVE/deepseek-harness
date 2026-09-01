@@ -204,8 +204,9 @@ function TurnStatus({ startTime, t }: {
  */
 export function ChatView({
   useSession, useChat, useSessions, useStore, actions, renderSlot, sessionId,
-  openFile, readWorkspaceFile, loadOlder, loadImage, openView, chatScroll, forkAt,
-  fileMentions, useTranscriptView, t,
+  openFile, readWorkspaceFile, readWorkspaceFileBinary, resolveWorkspaceImage, loadOlder, loadImage,
+  openView, chatScroll, forkAt,
+  fileMentions, useTranscriptView, useMarkdownView, useWorkspaceImages, t,
 }: ChatViewSlotProps) {
   const order = useChat(s => s.order)
   const nodeStore = useChat(s => s.nodes)
@@ -224,6 +225,16 @@ export function ChatView({
   const loadingOlder = useSession(s => s.loadingOlder)
   const selectedCallId = useStore(s => s.selection?.callId)
   const compactTranscript = useTranscriptView(mode => mode === 'compact')
+  const markdownViewDefault = useMarkdownView(mode => mode)
+  // Re-render when a workspace image load settles: the resolver's peek then
+  // returns the cached URL and the alt-text fallback swaps to the image.
+  const workspaceImagesVersion = useWorkspaceImages(value => value)
+  const resolveImage = useCallback(
+    (src: string) => resolveWorkspaceImage(src),
+    // The version dependency drives identity: a fresh resolver per settled
+    // load lets the memoized Markdown renderers pick up the new URL.
+    [resolveWorkspaceImage, workspaceImagesVersion],
+  )
   const inspectCall = useCallback((callId: string) => {
     openView('trajectory', callId)
   }, [openView])
@@ -600,6 +611,8 @@ export function ChatView({
               nodeKey={nodeKey}
               historyIncomplete={hasMore}
               compactTranscript={compactTranscript}
+              markdownViewDefault={markdownViewDefault}
+              resolveImage={resolveImage}
               useChat={useChat}
               useStore={useStore}
               actions={actions}
@@ -664,7 +677,13 @@ export function ChatView({
           t={t}
         />
       )}
-      <FilePreviewHost useStore={useStore} actions={actions} readWorkspaceFile={readWorkspaceFile} t={t} />
+      <FilePreviewHost
+        useStore={useStore}
+        actions={actions}
+        readWorkspaceFile={readWorkspaceFile}
+        readWorkspaceFileBinary={readWorkspaceFileBinary}
+        t={t}
+      />
     </div>
   )
 }

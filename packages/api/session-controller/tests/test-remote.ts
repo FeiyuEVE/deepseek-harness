@@ -49,6 +49,8 @@ import type {
   SessionUpdateQueueValue,
 } from '../src/types.ts'
 import type {
+  SessionReadWorkspaceFileBinaryRequest,
+  SessionReadWorkspaceFileBinaryValue,
   SessionReadWorkspaceFileRequest,
   SessionReadWorkspaceFileValue,
 } from '../src/types.ts'
@@ -75,6 +77,10 @@ export interface TestSessionRemote {
     request: SessionReadWorkspaceFileRequest,
     signal?: AbortSignal,
   ): Promise<RemoteResult<SessionReadWorkspaceFileValue>>
+  readWorkspaceFileBinary(
+    request: SessionReadWorkspaceFileBinaryRequest,
+    signal?: AbortSignal,
+  ): Promise<RemoteResult<SessionReadWorkspaceFileBinaryValue>>
   page(request: SessionPageRequest, signal?: AbortSignal): Promise<RemoteResult<SessionPage>>
   follow(request: SessionFollowRequest, signal?: AbortSignal): AsyncIterable<SessionFollowFrame>
   control(signal?: AbortSignal): AsyncIterable<SessionControlFrame>
@@ -84,6 +90,7 @@ export interface TestSessionRemote {
 export interface TestSessionRemoteDefaults {
   readonly defaultModelSelection: () => AgentModelSelection
   readonly cwd: string
+  readonly workspaceImageMaxBytes?: number
   readonly coldBlankProbeMaxBytes?: number
   readonly nativeOpen?: boolean
   readonly saveDefaultModelSelection?: (selection: AgentModelSelection) => void | Promise<void>
@@ -197,6 +204,9 @@ function installControllers(
     controller = new SessionController(
       ctx,
       {
+        ...defaults.workspaceImageMaxBytes === undefined
+          ? {}
+          : { workspaceImageMaxBytes: defaults.workspaceImageMaxBytes },
         ...defaults.coldBlankProbeMaxBytes === undefined
           ? {}
           : { coldBlankProbeMaxBytes: defaults.coldBlankProbeMaxBytes },
@@ -277,6 +287,10 @@ export function createSessionTestRemote(
     ),
     readWorkspaceFile: (request, signal = new AbortController().signal) => remoteResult(
       () => direct.readWorkspaceFile(request, signal),
+      signal,
+    ),
+    readWorkspaceFileBinary: (request, signal = new AbortController().signal) => remoteResult(
+      () => direct.readWorkspaceFileBinary(request, signal),
       signal,
     ),
     page: (request, signal = new AbortController().signal) => remoteResult(

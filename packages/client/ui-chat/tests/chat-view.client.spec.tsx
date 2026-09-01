@@ -8,7 +8,7 @@ import type {
   ChatViewSlotProps, CommandNode, CompactionSummaryNode, ContextMessageNode, ConversationNode,
   LegacyConversationSlice, ModelRetryNode, RunningToolCall, SelectionTarget, SteeringMessageNode,
   ToolCallBlock, ToolResultNode, TurnErrorNode, TurnMaxTokensNode, UseChatNodeTurnData,
-  TranscriptViewMode, UserMessageNode,
+  MarkdownViewMode, TranscriptViewMode, UserMessageNode,
 } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {
   SessionListState, SessionSnapshot,
@@ -134,6 +134,7 @@ const userInTurn = (seq: number, text: string, turn: number): ConversationNode =
 } as unknown as ConversationNode)
 const assistant = (seq: number, text: string, turn = 1, step = 1): AssistantMessageNode => ({
   kind: 'assistant', seq, time: seq * 1_000, turn, step, blocks: [{ kind: 'text', text }],
+  messageId: `msg-${String(seq)}` as never,
 })
 const reasoningAssistant = (seq: number, text: string, turn = 1, step = 1): AssistantMessageNode => ({
   kind: 'assistant', seq, time: seq * 1_000, turn, step, blocks: [{ kind: 'reasoning', text }],
@@ -236,6 +237,8 @@ function makeHarness(
   // Rows and the harness must observe the same chat-store instance.
   const chat = createChatStore().create()
   const transcriptView = createSnapshotStore<TranscriptViewMode>('compact')
+  const markdownViewDefault = createSnapshotStore<MarkdownViewMode>('render')
+  const workspaceImages = createSnapshotStore(0)
   const t = makeTranslate(zh, commonZh)
   const toolOwners: Array<{
     callId: string
@@ -363,6 +366,10 @@ function makeHarness(
     useStore: bindSnapshotSelector(chat),
     actions: chat.actions,
     useTranscriptView: bindSnapshotSelector(transcriptView),
+    useMarkdownView: bindSnapshotSelector(markdownViewDefault),
+    useWorkspaceImages: bindSnapshotSelector(workspaceImages),
+    resolveWorkspaceImage: () => undefined,
+    readWorkspaceFileBinary: null,
     renderSlot,
     SessionProvider: SessionProviderStub,
     viewRequest: null,
@@ -403,6 +410,8 @@ function makeHarness(
     openDetails, openFile, loadOlder, openView,
     chatScroll, forkAt, setSelection, toolOwners,
     setTranscriptView: (mode: TranscriptViewMode) => { transcriptView.set(mode) },
+    setMarkdownView: (mode: MarkdownViewMode) => { markdownViewDefault.set(mode) },
+    setWorkspaceImagesVersion: (version: number) => { workspaceImages.set(version) },
     setNodeRenderer: (renderer: React.ComponentProps<typeof ChatNodeSeat>['renderSlot']) => {
       nodeSlotOverride = renderer
     },
@@ -2327,5 +2336,74 @@ describe('ChatView', () => {
     const failedView = render(<failed.ChatView {...failed.props} />)
     expect(failedView.getByText('Compaction cancelled.')).toBeTruthy()
     expect(failedView.container.querySelector('[data-state="error"]')).not.toBeNull()
+  })
+})
+
+describe('Markdown presentation modes in the chat flow', () => {
+  it('renders the rendered arm by default and flips one message to raw via the tail toggle', () => {
+    const h = makeHarness({
+      nodes: [
+        userInTurn(2, 'question', 1),
+        assistant(4, '# Final answer', 1, 1),
+      ],
+      turnEnds: new Map([[1, 5]]),
+    })
+    const view = render(<h.ChatView {...h.props} />)
+    const body = view.container.querySelector<HTMLElement>('[data-chat-flow-kind="assistant-step"]')!
+    // Rendered arm: the markdown heading is real chrome.
+    expect(body.querySelector('h1')).not.toBeNull()
+
+    const tail = view.container.querySelector<HTMLElement>('[data-turn-tail="1"]')!
+    const toggle = within(tail).getByRole('button', { name: '查看 Markdown 原文' })
+    expect(toggle.getAttribute('aria-pressed')).toBe('false')
+    fireEvent.click(toggle)
+    // Raw arm: the source appears verbatim, the heading chrome is gone.
+    expect(toggle.getAttribute('aria-pressed')).toBe('true')
+    expect(within(tail).getByRole('button', { name: '查看渲染效果' })).toBeTruthy()
+    expect(view.container.querySelector('pre')?.textContent).toBe('# Final answer')
+    expect(body.querySelector('h1')).toBeNull()
+
+    fireEvent.click(toggle)
+    expect(view.container.querySelector('pre')).toBeNull()
+    expect(body.querySelector('h1')).not.toBeNull()
+    expect(within(tail).getByRole('button', { name: '查看 Markdown 原文' })).toBeTruthy()
+  })
+
+  it('applies the persisted raw default to every assistant message', () => {
+    const h = makeHarness({
+      nodes: [
+        userInTurn(2, 'question', 1),
+        assistant(4, '**plain** answer', 1, 1),
+      ],
+      turnEnds: new Map([[1, 5]]),
+    })
+    const view = render(<h.ChatView {...h.props} />)
+    expect(view.container.querySelector('pre')).toBeNull()
+
+    act(() => { h.setMarkdownView('raw') })
+    expect(view.container.querySelectorAll('pre').length).toBeGreaterThan(0)
+    expect(view.container.querySelector('pre')?.textContent).toBe('**plain** answer')
+
+    // The tail toggle still reflects the message-local override on top of the default.
+    const tail = view.container.querySelector<HTMLElement>('[data-turn-tail="1"]')!
+    const toggle = within(tail).getByRole('button', { name: '查看渲染效果' })
+    fireEvent.click(toggle)
+    expect(view.container.querySelector('pre')).toBeNull()
+  })
+
+  it('renders a resolved workspace image and declines unresolved sources', () => {
+    const h = makeHarness({
+      nodes: [
+        userInTurn(2, 'question', 1),
+        assistant(4, '![chart](./output/chart.png) ![missing](./nope.png)', 1, 1),
+      ],
+      turnEnds: new Map([[1, 5]]),
+    })
+    h.props.resolveWorkspaceImage = src => src === './output/chart.png' ? 'blob:chart' : undefined
+    const view = render(<h.ChatView {...h.props} />)
+    const image = view.getByRole('img', { name: 'chart' })
+    expect(image.getAttribute('src')).toBe('blob:chart')
+    // The unresolved source keeps the inert alt text.
+    expect(view.getByText('missing')).toBeTruthy()
   })
 })

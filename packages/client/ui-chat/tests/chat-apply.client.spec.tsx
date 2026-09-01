@@ -79,7 +79,7 @@ describe('Chat apply wiring', () => {
     expect(b.runtime.slots.entries('conversation.composer.dock').map(row => row.options.id))
       .toEqual(['stats'])
     expect(b.runtime.slots.entries('settings.general.item').map(row => row.options.id))
-      .toEqual(['transcript-view', 'composer-enter'])
+      .toEqual(['transcript-view', 'markdown-view', 'composer-enter'])
     expect(b.runtime.slots.entries('details')).toHaveLength(1)
     await b.runtime.dispose()
   })
@@ -96,7 +96,7 @@ describe('Chat apply wiring', () => {
     expect(b.chatSettings.set).toHaveBeenCalledWith('transcriptView', 'normal')
 
     b.chatSettings.publish({
-      status: 'ready', value: { transcriptView: 'compact' }, revision: 1, writable: true,
+      status: 'ready', value: { transcriptView: 'compact', markdownView: 'render' }, revision: 1, writable: true,
     })
     expect(face.hooks.transcriptView.getSnapshot()).toBe('compact')
     await b.runtime.dispose()

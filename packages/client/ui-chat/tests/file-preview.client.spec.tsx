@@ -8,6 +8,7 @@ import { zh } from '../src/client/locale.ts'
 import { createChatStore } from '../src/client/stores.ts'
 import type { WorkspaceFileReader } from '../src/client/file-preview.ts'
 import { FilePreview, FilePreviewHost, fileBaseName, formatFileSize } from '../src/client/chat/FilePreview.tsx'
+import type { WorkspaceImageReader } from '../src/client/workspace-image.ts'
 
 afterEach(() => {
   cleanup()
@@ -101,7 +102,7 @@ describe('FilePreview', () => {
         eof: true,
       },
     })
-    const view = render(<FilePreview path="/workspace/README.md" read={read} close={close} t={t} />)
+    const view = render(<FilePreview path="/workspace/README.md" read={read} readBinary={null} close={close} t={t} />)
     expect(await screen.findByText('Heading')).toBeTruthy()
     expect(screen.getByText('body text')).toBeTruthy()
     expect(screen.getByText('README.md')).toBeTruthy()
@@ -116,7 +117,7 @@ describe('FilePreview', () => {
       ok: true,
       value: { content: 'export const x = 1', kind: 'code', size: 18, totalSize: 18, offset: 0, eof: true },
     })
-    render(<FilePreview path="/workspace/src/main.ts" read={read} close={vi.fn()} t={t} />)
+    render(<FilePreview path="/workspace/src/main.ts" read={read} readBinary={null} close={vi.fn()} t={t} />)
     const code = await screen.findByRole('code')
     expect(code.textContent).toBe('export const x = 1')
   })
@@ -126,7 +127,7 @@ describe('FilePreview', () => {
       ok: true,
       value: { content: '{"a":1}', kind: 'json', size: 7, totalSize: 7, offset: 0, eof: true },
     })
-    render(<FilePreview path="/workspace/data.json" read={read} close={vi.fn()} t={t} />)
+    render(<FilePreview path="/workspace/data.json" read={read} readBinary={null} close={vi.fn()} t={t} />)
     expect(await screen.findByText(/JSON 内容/)).toBeTruthy()
   })
 
@@ -135,7 +136,7 @@ describe('FilePreview', () => {
       ok: true,
       value: { content: '', kind: 'binary', size: 0, totalSize: 4096, offset: 0, eof: true },
     })
-    render(<FilePreview path="/workspace/image.png" read={read} close={vi.fn()} t={t} />)
+    render(<FilePreview path="/workspace/image.png" read={read} readBinary={null} close={vi.fn()} t={t} />)
     expect(await screen.findByText('二进制文件，无法在页面内预览')).toBeTruthy()
   })
 
@@ -144,13 +145,13 @@ describe('FilePreview', () => {
       ok: false,
       error: { message: 'boom', code: 'read-failed', details: {} },
     })
-    render(<FilePreview path="/workspace/missing.txt" read={read} close={vi.fn()} t={t} />)
+    render(<FilePreview path="/workspace/missing.txt" read={read} readBinary={null} close={vi.fn()} t={t} />)
     expect(await screen.findByText('无法读取文件：boom')).toBeTruthy()
   })
 
   it('slides a three-chunk window forward and refetches backward', async () => {
     const { read, requestedOffsets } = chunkedReader(WINDOW)
-    render(<FilePreview path="/workspace/big.log" read={read} close={vi.fn()} t={t} />)
+    render(<FilePreview path="/workspace/big.log" read={read} readBinary={null} close={vi.fn()} t={t} />)
 
     expect(await screen.findByText('window-a')).toBeTruthy()
     const element = scrollContainer()
@@ -179,7 +180,7 @@ describe('FilePreview', () => {
 
   it('does not fetch past the end or before the start', async () => {
     const { read, requestedOffsets } = chunkedReader(WINDOW)
-    render(<FilePreview path="/workspace/big.log" read={read} close={vi.fn()} t={t} />)
+    render(<FilePreview path="/workspace/big.log" read={read} readBinary={null} close={vi.fn()} t={t} />)
     await screen.findByText('window-a')
     const element = scrollContainer()
 
@@ -210,6 +211,7 @@ describe('FilePreviewHost', () => {
         useStore={bindSnapshotSelector(store.store)}
         actions={store.actions}
         readWorkspaceFile={null}
+        readWorkspaceFileBinary={null}
         t={t}
       />,
     )
@@ -228,6 +230,7 @@ describe('FilePreviewHost', () => {
         useStore={bindSnapshotSelector(store.store)}
         actions={store.actions}
         readWorkspaceFile={read}
+        readWorkspaceFileBinary={null}
         t={t}
       />,
     )
@@ -237,5 +240,74 @@ describe('FilePreviewHost', () => {
     store.actions.closeFilePreview()
     await vi.waitFor(() => expect(view.container.childElementCount).toBe(0))
     view.unmount()
+  })
+})
+
+describe('FilePreview image rendering', () => {
+  it('renders a workspace image through the binary reader', async () => {
+    const readBinary: WorkspaceImageReader = async () => ({
+      ok: true,
+      value: { mediaType: 'image/png', data: 'aGk=', size: 2 },
+    })
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview')
+    const view = render(
+      <FilePreview
+        path="/workspace/chart.png"
+        read={async () => ({ ok: true, value: { content: '', kind: 'binary', size: 2, totalSize: 2, offset: 0, eof: true } })}
+        readBinary={readBinary}
+        close={() => {}}
+        t={t}
+      />,
+    )
+    const image = await screen.findByRole('img', { name: '/workspace/chart.png' })
+    expect(image.getAttribute('src')).toBe('blob:preview')
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    view.unmount()
+    expect(revoke).toHaveBeenCalledWith('blob:preview')
+  })
+
+  it('shows the preview error when the binary read fails', async () => {
+    const readBinary: WorkspaceImageReader = async () => ({
+      ok: false,
+      error: { code: 'not-found', message: 'missing', details: {} },
+    })
+    render(
+      <FilePreview
+        path="/workspace/missing.svg"
+        read={async () => ({ ok: true, value: { content: '', kind: 'binary', size: 0, offset: 0, eof: true } })}
+        readBinary={readBinary}
+        close={() => {}}
+        t={t}
+      />,
+    )
+    expect(await screen.findByText('无法读取文件：无法加载图片')).toBeTruthy()
+  })
+
+  it('shows the loading notice while the read is pending', () => {
+    const readBinary: WorkspaceImageReader = () => new Promise(() => {})
+    const view = render(
+      <FilePreview
+        path="/workspace/loading.jpeg"
+        read={async () => ({ ok: true, value: { content: '', kind: 'binary', size: 0, offset: 0, eof: true } })}
+        readBinary={readBinary}
+        close={() => {}}
+        t={t}
+      />,
+    )
+    expect(view.container.querySelector('img')).toBeNull()
+    expect(screen.getByText('加载中…')).toBeTruthy()
+  })
+
+  it('falls back to the binary notice without a binary reader', () => {
+    render(
+      <FilePreview
+        path="/workspace/chart.png"
+        read={async () => ({ ok: true, value: { content: '', kind: 'binary', size: 2, offset: 0, eof: true } })}
+        readBinary={null}
+        close={() => {}}
+        t={t}
+      />,
+    )
+    expect(screen.getByText('二进制文件，无法在页面内预览')).toBeTruthy()
   })
 })

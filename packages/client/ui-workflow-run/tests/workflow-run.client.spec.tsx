@@ -331,6 +331,9 @@ function panelProps(data: WorkflowRunChatData, sessions = listState(), openSessi
     forkAt: () => {},
     renderMessageImages: () => null,
     fileMentions: () => undefined,
+    markdownView: 'render',
+    toggleMessageRaw: () => {},
+    resolveImage: () => undefined,
     openSession,
     t: makeTranslate(zh),
   }

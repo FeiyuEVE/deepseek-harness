@@ -403,6 +403,22 @@ export interface SessionReadWorkspaceFileValue {
   readonly eof: boolean
 }
 
+/** Whole-file image read for in-page rendering (browser-preview arms only). */
+export interface SessionReadWorkspaceFileBinaryRequest {
+  /** Absolute Host filesystem path, in backend syntax. */
+  readonly path: string
+}
+
+/** One whole image file, base64-encoded on the wire like attachment bytes. */
+export interface SessionReadWorkspaceFileBinaryValue {
+  /** MIME media type derived from the file extension. */
+  readonly mediaType: string
+  /** Base64-encoded file bytes (UTF-8 base64 alphabet, no whitespace). */
+  readonly data: string
+  /** Total file size in bytes. */
+  readonly size: number
+}
+
 /** Client-minted prompt identity used to reconcile optimistic and durable messages. */
 export type SessionRequestId = Branded<'session-request-id'>
 

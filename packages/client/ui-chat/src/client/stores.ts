@@ -1,7 +1,9 @@
 /** Per-Session Chat selection store shared by the transcript and details panel. */
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-store'
 import type { TurnProcessGeneration } from './contract/turn-process.ts'
-import type { ChatStoreState, SelectionTarget, TurnProcessViewEntry } from './contract/store.ts'
+import type {
+  AssistantMessageId, ChatStoreState, SelectionTarget, TurnProcessViewEntry,
+} from './contract/store.ts'
 
 type ChatActions = {
   select: (draft: ChatStoreState, target: SelectionTarget | null) => void
@@ -13,6 +15,8 @@ type ChatActions = {
   ) => void
   openFilePreview: (draft: ChatStoreState, path: string) => void
   closeFilePreview: (draft: ChatStoreState) => void
+  /** Set one message's explicit presentation override (true = raw, false = rendered). */
+  setMessageRaw: (draft: ChatStoreState, messageId: AssistantMessageId, raw: boolean) => void
 }
 
 /**
@@ -34,7 +38,12 @@ export function storedTurnProcessEntry(
  */
 export function createChatStore(): EngineStoreHandle<ChatStoreState, ChatActions> {
   return defineStore({
-    init: (): ChatStoreState => ({ selection: null, turnProcesses: [], filePreview: null }),
+    init: (): ChatStoreState => ({
+      selection: null,
+      turnProcesses: [],
+      filePreview: null,
+      rawOverrides: {},
+    }),
     actions: {
       select: (draft, target: SelectionTarget | null) => { draft.selection = target },
       setTurnProcessOpen: (draft, turn, generation, open) => {
@@ -49,6 +58,9 @@ export function createChatStore(): EngineStoreHandle<ChatStoreState, ChatActions
       },
       openFilePreview: (draft, path: string) => { draft.filePreview = { path } },
       closeFilePreview: (draft) => { draft.filePreview = null },
+      setMessageRaw: (draft, messageId: AssistantMessageId, raw: boolean) => {
+        draft.rawOverrides[messageId] = raw
+      },
     },
   })
 }

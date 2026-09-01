@@ -13,4 +13,5 @@
   <p>
     #text "[missing full][nope], [missing collapsed][], ![missing image][gone]."
   <p>
-    <img alt="ref image" class="_image_404681" decoding="async" loading="lazy" referrerpolicy="no-referrer" src="https://example.com/ref.png">
+    <button aria-label="查看大图" class="_imageFrame_404681" title="查看大图" type="button">
+      <img alt="ref image" class="_image_404681" decoding="async" loading="lazy" referrerpolicy="no-referrer" src="https://example.com/ref.png">

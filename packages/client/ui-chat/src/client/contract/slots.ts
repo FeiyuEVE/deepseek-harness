@@ -10,13 +10,15 @@ import type {
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { MarkdownFileMentions } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
+import type { AssistantMessageId } from './store.ts'
 import type { WorkspaceFileReader } from '../file-preview.ts'
+import type { WorkspaceImageReader } from '../workspace-image.ts'
 import type { createChatStore } from '../stores.ts'
 import type { ToolCallId, SelectionTarget } from './store.ts'
 import type { ChatNode, ChatNodeKind } from './chat-nodes.ts'
 import type { ChatSnapshot, CommandNode, CompactionSummaryNode, ToolCallBlock } from './snapshot.ts'
 import type { TurnProcessSpec } from './turn-process.ts'
-import type { TranscriptViewMode } from '../../chat-settings.ts'
+import type { MarkdownViewMode, TranscriptViewMode } from '../../chat-settings.ts'
 
 /** Selector hook over the current Conversation binding's Chat target. */
 export type UseChat = SnapshotSelectorHook<ChatSnapshot>
@@ -71,6 +73,12 @@ export interface ChatNodeOwnerProps {
   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
   /** Turn-process state when this Node belongs to a projected Turn. */
   turnProcess?: TurnProcessOwnerProps | undefined
+  /** Resolved Markdown presentation for this Node (override or persisted default). */
+  markdownView: MarkdownViewMode
+  /** Flip one durable assistant message between rendered and raw source. */
+  toggleMessageRaw: (messageId: AssistantMessageId) => void
+  /** Workpace-aware Markdown image resolver (peek of the session image cache). */
+  resolveImage: (src: string) => string | undefined
 }
 
 /** Shared presentation state for one Turn-process answer generation. */
@@ -115,11 +123,19 @@ export interface ChatViewInjected {
   hooks: {
     /** Persisted completed-Turn transcript presentation. */
     transcriptView: SnapshotStore<TranscriptViewMode>
+    /** Persisted assistant-Markdown presentation. */
+    markdownView: SnapshotStore<MarkdownViewMode>
+    /** Bumped when a workspace image finishes loading; drives re-renders. */
+    workspaceImages: SnapshotStore<number>
   }
   openDetails: (target: SelectionTarget) => void
   openFile: (path: string) => Promise<void>
   /** One byte-range read for the in-page file preview; null when unavailable. */
   readWorkspaceFile: WorkspaceFileReader | null
+  /** One whole-image read for Markdown resolution and preview; null when unavailable. */
+  readWorkspaceFileBinary: WorkspaceImageReader | null
+  /** Resolve one authored image source to a displayable URL. */
+  resolveWorkspaceImage: (src: string) => string | undefined
   loadOlder: () => void
   loadImage: MessageImageLoader
   chatScroll: {

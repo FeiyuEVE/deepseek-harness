@@ -9,6 +9,7 @@ import { canOpenNativePath, openNativePath } from '@deepseek-ai/dsh-native-comma
 import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionObservation } from '@deepseek-ai/dsh-session-query'
 import { Remote, TypertRemoteFailure, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { bytesToBase64 } from '@deepseek-ai/dsh-util-crypto'
 import {
   ApiSessionAgentController,
   inspectApiSession,
@@ -43,6 +44,8 @@ import type {
   SessionPageRequest,
   SessionPromptRequest,
   SessionPromptValue,
+  SessionReadWorkspaceFileBinaryRequest,
+  SessionReadWorkspaceFileBinaryValue,
   SessionReadWorkspaceFileRequest,
   SessionReadWorkspaceFileValue,
   SessionRenameRequest,
@@ -63,6 +66,9 @@ export { SessionSkillCatalog } from './skill-catalog.ts'
 /** Default and maximum bytes returned by one `readWorkspaceFile` call. */
 export const DEFAULT_WORKSPACE_FILE_CHUNK_BYTES = 256 * 1024
 
+/** Default and maximum bytes returned by one `readWorkspaceFileBinary` image. */
+export const DEFAULT_WORKSPACE_IMAGE_MAX_BYTES = 8 * 1024 * 1024
+
 /** Leading bytes scanned for NUL to classify a file as binary. */
 const BINARY_SAMPLE_BYTES = 8192
 
@@ -81,6 +87,27 @@ const CODE_EXTENSIONS = new Set([
   '.js', '.jsx', '.kt', '.kts', '.lua', '.php', '.proto', '.py', '.rb', '.rs', '.scss',
   '.sh', '.sql', '.svelte', '.swift', '.toml', '.ts', '.tsx', '.vue', '.xml', '.zsh',
 ])
+
+/** Browser-renderable image extensions served by `readWorkspaceFileBinary`. */
+const WORKSPACE_IMAGE_EXTENSIONS = new Set([
+  '.apng', '.avif', '.bmp', '.gif', '.ico', '.jpeg', '.jpg', '.png', '.svg', '.svgz',
+  '.webp',
+])
+
+/** Media types for {@link WORKSPACE_IMAGE_EXTENSIONS}; unknown leaves the file unservable. */
+const WORKSPACE_IMAGE_MEDIA_TYPES: Record<string, string> = {
+  '.apng': 'image/apng',
+  '.avif': 'image/avif',
+  '.bmp': 'image/bmp',
+  '.gif': 'image/gif',
+  '.ico': 'image/x-icon',
+  '.jpeg': 'image/jpeg',
+  '.jpg': 'image/jpeg',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.svgz': 'image/svg+xml',
+  '.webp': 'image/webp',
+}
 
 /** Whether a path is absolute in Host filesystem syntax. */
 function isHostAbsolutePath(path: string): boolean {
@@ -117,6 +144,8 @@ export interface Config {
   readonly nativeOpen?: boolean
   /** Inclusive byte cap for one `readWorkspaceFile` chunk (default 256 KiB). */
   readonly workspaceFileChunkBytes?: number
+  /** Inclusive byte cap for one `readWorkspaceFileBinary` image (default 8 MiB). */
+  readonly workspaceImageMaxBytes?: number
 }
 
 /** Host integrations replaceable by direct unit tests. */
@@ -417,6 +446,75 @@ export class SessionController extends TypertRemoteService {
       ...totalSize === undefined ? {} : { totalSize },
       offset,
       eof: bytes.byteLength < limit || (totalSize !== undefined && offset + bytes.byteLength >= totalSize),
+    }
+  }
+
+  /**
+   * Read one whole browser-renderable image for in-page preview. Only the
+   * image extensions in {@link WORKSPACE_IMAGE_EXTENSIONS} are served, and the
+   * file must be an existing regular file on the Session's own filesystem —
+   * the same readable set the Session's own agent tools can touch. Relative
+   * paths are rejected; the caller resolves against the Session workspace
+   * first. A file past the configured {@link Config.workspaceImageMaxBytes}
+   * cap is refused rather than shipped to the browser in full.
+   * @param request - absolute path of the image file to read.
+   * @param signal - caller lifetime; abort terminates the read.
+   * @returns the media type and base64-encoded whole-file bytes.
+   * @throws TypertRemoteFailure when the path is invalid, unsupported, absent,
+   *   oversized, not a regular file, or the read fails.
+   */
+  @Remote('readWorkspaceFileBinary')
+  async readWorkspaceFileBinary(
+    request: SessionReadWorkspaceFileBinaryRequest,
+    signal: AbortSignal,
+  ): Promise<SessionReadWorkspaceFileBinaryValue> {
+    const maxBytes = this.config.workspaceImageMaxBytes ?? DEFAULT_WORKSPACE_IMAGE_MAX_BYTES
+    if (request.path.length === 0 || !isHostAbsolutePath(request.path)) {
+      throw new TypertRemoteFailure({
+        code: 'bad-request',
+        message: 'session.readWorkspaceFileBinary requires an absolute non-empty path',
+        details: {},
+      })
+    }
+    const extension = extname(request.path).toLowerCase()
+    const mediaType = WORKSPACE_IMAGE_MEDIA_TYPES[extension]
+    if (mediaType === undefined || !WORKSPACE_IMAGE_EXTENSIONS.has(extension)) {
+      throw new TypertRemoteFailure({
+        code: 'bad-request',
+        message: `session.readWorkspaceFileBinary: "${extension || '(no extension)'}" is not a renderable image`,
+        details: {},
+      })
+    }
+    signal.throwIfAborted()
+    const fs = this.ctx.fs
+    const target = await fs.resolve(request.path, { signal })
+    const info = await fs.stat(target, signal)
+    if (info === undefined) {
+      throw new TypertRemoteFailure({
+        code: 'not-found',
+        message: `session.readWorkspaceFileBinary: "${target.displayPath}" does not exist`,
+        details: {},
+      })
+    }
+    if (info.type !== 'file') {
+      throw new TypertRemoteFailure({
+        code: 'bad-request',
+        message: `session.readWorkspaceFileBinary: "${target.displayPath}" is not a regular file`,
+        details: {},
+      })
+    }
+    if (info.size !== undefined && info.size > maxBytes) {
+      throw new TypertRemoteFailure({
+        code: 'too-large',
+        message: `session.readWorkspaceFileBinary: "${target.displayPath}" exceeds the ${maxBytes}-byte preview cap`,
+        details: {},
+      })
+    }
+    const bytes = await fs.readBytesRange(target, 0, Math.min(maxBytes + 1, info.size ?? maxBytes + 1), signal)
+    return {
+      mediaType,
+      data: bytesToBase64(bytes),
+      size: bytes.byteLength,
     }
   }
 

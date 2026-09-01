@@ -27,9 +27,12 @@ import { StatsLine } from './chat/StatsLine.tsx'
 import { registerConversationNodes } from './conversation-nodes/register.ts'
 import { DetailsPanel } from './details/DetailsPanel.tsx'
 import { en, NS, zh } from './locale.ts'
+import { MarkdownViewRow, type MarkdownViewRowInjected } from './settings/MarkdownViewRow.tsx'
 import { TranscriptViewRow, type TranscriptViewRowInjected } from './settings/TranscriptViewRow.tsx'
 import { createChatStore } from './stores.ts'
+import { MarkdownViewPolicy } from './markdown-view.ts'
 import { TranscriptViewPolicy } from './transcript-view.ts'
+import { WorkspaceImageUrlCache, resolveWorkspaceImagePath } from './workspace-image.ts'
 import { CHAT_SETTINGS_NAMESPACE, type ChatSettings } from '../chat-settings.ts'
 
 const CHAT_NODE_INJECT: ChatNodeTurnDataInjected = {
@@ -87,7 +90,11 @@ export function apply(ctx: Context): void {
   const t = ctx.locale.bind(NS)
   const chatStore = createChatStore()
   const chatScrollPositions = new Map<SessionId, ChatScrollPosition>()
+  const workspaceImageCaches = new Map<SessionId, WorkspaceImageUrlCache>()
   const transcriptView = new TranscriptViewPolicy(
+    ctx.settingsScope.bind<ChatSettings>({ namespace: CHAT_SETTINGS_NAMESPACE }),
+  )
+  const markdownView = new MarkdownViewPolicy(
     ctx.settingsScope.bind<ChatSettings>({ namespace: CHAT_SETTINGS_NAMESPACE }),
   )
 
@@ -101,6 +108,17 @@ export function apply(ctx: Context): void {
       setTranscriptView: (mode) => { transcriptView.setMode(mode) },
     }),
   }, TranscriptViewRow))
+
+  ctx.slots.inject('settings.general.item', () => ctx.slots.register({
+    name: 'settings.general.item',
+    id: 'markdown-view',
+    order: 13,
+    locale: NS,
+    inject: (): MarkdownViewRowInjected => ({
+      hooks: { markdownView: markdownView.mode },
+      setMarkdownView: (mode) => { markdownView.setMode(mode) },
+    }),
+  }, MarkdownViewRow))
 
   ctx.slots.inject('conversation.view', () => {
     const disposeView = ctx.slots.register({
@@ -117,8 +135,29 @@ export function apply(ctx: Context): void {
       inject: (sessionId: SessionId, actions: BoundActions<typeof chatStore>): ChatViewInjected => {
         const session = ctx.sessions.binding(sessionId)?.session
         if (session === undefined) throw new Error(`ui-chat: unknown session "${sessionId}"`)
+        let imageCache = workspaceImageCaches.get(sessionId)
+        if (imageCache === undefined) {
+          imageCache = new WorkspaceImageUrlCache(
+            (request, signal) => ctx.remote.session.readWorkspaceFileBinary(request, signal),
+          )
+          workspaceImageCaches.set(sessionId, imageCache)
+          const releaseSession = ctx.sessions.binding(sessionId)?.ctx
+          releaseSession?.effect(() => () => {
+            imageCache?.dispose()
+            workspaceImageCaches.delete(sessionId)
+          }, 'ui-chat workspace image cache')
+        }
+        const resolveWorkspaceImage = (src: string): string | undefined => {
+          const cwd = ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd
+          const path = resolveWorkspaceImagePath(cwd, src)
+          return path === undefined ? undefined : imageCache?.peek(path)
+        }
         return {
-          hooks: { transcriptView: transcriptView.mode },
+          hooks: {
+            transcriptView: transcriptView.mode,
+            markdownView: markdownView.mode,
+            workspaceImages: imageCache.version,
+          },
           openDetails: (target) => {
             actions.select(target)
             ctx.layout.openDetails()
@@ -138,6 +177,9 @@ export function apply(ctx: Context): void {
           },
           readWorkspaceFile: (request, signal) =>
             ctx.remote.session.readWorkspaceFile(request, signal),
+          readWorkspaceFileBinary: (request, signal) =>
+            ctx.remote.session.readWorkspaceFileBinary(request, signal),
+          resolveWorkspaceImage,
           loadOlder: () => { void session.loadOlder() },
           loadImage: Object.assign(
             (attachment: ImageAttachmentRef) => ctx.uiConversation.imageUrl(sessionId, attachment),

@@ -1,10 +1,12 @@
-import { memo } from 'react'
+import { memo, useCallback } from 'react'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
+import { IconCodeOutline16, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ChatNodeViewProps, TurnTailOwnerProps } from '../contract/slots.ts'
 import { MessageIconActions } from './MessageIconActions.tsx'
 import { TurnUsageDisclosure } from './TurnUsageDisclosure.tsx'
 import { assistantText } from './turn-assistant.ts'
 import css from './TurnTailNodeView.module.css'
+import actionsCss from './MessageIconActions.module.css'
 
 type TurnTailNodeViewProps = ChatNodeViewProps<'turn-tail'>
   & PropsRenderSlots<'conversation.chat.turnTail' | 'conversation.chat.assistant-actions'>
@@ -12,6 +14,7 @@ type TurnTailNodeViewProps = ChatNodeViewProps<'turn-tail'>
 /** Turn-local actions and feature tail over the Location index, independent of Assistant placement. */
 export const TurnTailNodeView = memo(function TurnTailNodeView({
   node, openFile, forkAt, renderSlot, renderSlotChain, t, useChat,
+  markdownView, toggleMessageRaw,
 }: TurnTailNodeViewProps) {
   const data = node.data
   const hasLaterChatNode = useChat(snapshot =>
@@ -33,6 +36,23 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
   const assistantActions = messageId === undefined
     ? null
     : renderSlot('conversation.chat.assistant-actions', { messageId })
+  const raw = markdownView === 'raw'
+  const toggleRaw = useCallback(() => {
+    if (messageId !== undefined) toggleMessageRaw(messageId)
+  }, [messageId, toggleMessageRaw])
+  const rawToggle = (
+    <Tooltip label={raw ? t('message.renderView') : t('message.rawView')} side="bottom">
+      <button
+        type="button"
+        className={`${actionsCss.action} ${raw ? css.toggled : ''}`}
+        aria-label={raw ? t('message.renderView') : t('message.rawView')}
+        aria-pressed={raw}
+        onClick={toggleRaw}
+      >
+        <IconCodeOutline16 />
+      </button>
+    </Tooltip>
+  )
   return (
     <div className={css.root} data-turn-tail={data.turn} data-time-hover-root>
       {tail}
@@ -48,7 +68,7 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
           onBranch={() => { forkAt(closing.finalNode.seq) }}
           branchUnavailable={data.branchUnavailable || hasLaterChatNode}
           className={css.actions}
-          extraActions={assistantActions}
+          extraActions={assistantActions === null ? rawToggle : <>{rawToggle}{assistantActions}</>}
           t={t}
         />
       </div>

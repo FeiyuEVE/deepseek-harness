@@ -47,6 +47,17 @@
   -webkit-overflow-scrolling: touch;
 }
 
+/* Whole-image preview: fitted to the overlay body; the browser keeps its
+   own pinch/scroll zoom on handheld surfaces. */
+.image {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 120px);
+  margin: 0 auto;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
 .plain {
   margin: 0;
   white-space: pre-wrap;

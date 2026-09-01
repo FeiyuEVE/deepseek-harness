@@ -8,6 +8,7 @@ import {
 import type { ChatViewSlotProps } from '../contract/slots.ts'
 import { markdownLabels } from '../markdown-labels.ts'
 import type { WorkspaceFileReader } from '../file-preview.ts'
+import { imageDataUrl, isWorkspaceImagePath, type WorkspaceImageReader } from '../workspace-image.ts'
 import css from './FilePreview.module.css'
 
 /** Default chunk size requested from the Host (mirrors the deployment default). */
@@ -42,7 +43,7 @@ export function formatFileSize(bytes: number | undefined): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-/** Map a preview kind to a code-highlight grammar hint. */
+/** Map a preview kind to a code-highlight grammar hint (mirrors the Host's code-extension set). */
 function grammarFor(path: string): string | undefined {
   const extension = path.slice(path.lastIndexOf('.')).toLowerCase()
   const grammars: Record<string, string> = {
@@ -52,7 +53,7 @@ function grammarFor(path: string): string | undefined {
     '.lua': 'lua', '.php': 'php', '.proto': 'protobuf', '.py': 'python', '.rb': 'ruby',
     '.rs': 'rust', '.scss': 'scss', '.sh': 'shellscript', '.sql': 'sql', '.svelte': 'svelte',
     '.swift': 'swift', '.toml': 'toml', '.ts': 'typescript', '.tsx': 'tsx', '.vue': 'vue',
-    '.xml': 'xml', '.yaml': 'yaml', '.yml': 'yaml', '.zsh': 'shellscript',
+    '.xml': 'xml', '.zsh': 'shellscript',
   }
   return grammars[extension]
 }
@@ -182,12 +183,13 @@ export interface FilePreviewHostProps {
   useStore: ChatViewSlotProps['useStore']
   actions: ChatViewSlotProps['actions']
   readWorkspaceFile: WorkspaceFileReader | null
+  readWorkspaceFileBinary: WorkspaceImageReader | null
   t: ChatViewSlotProps['t']
 }
 
 /** Renders the open preview overlay, or nothing when the store has none. */
 export const FilePreviewHost = memo(function FilePreviewHost({
-  useStore, actions, readWorkspaceFile, t,
+  useStore, actions, readWorkspaceFile, readWorkspaceFileBinary, t,
 }: FilePreviewHostProps) {
   const preview = useStore(state => state.filePreview)
   if (preview === null || readWorkspaceFile === null) return null
@@ -196,16 +198,54 @@ export const FilePreviewHost = memo(function FilePreviewHost({
       key={preview.path}
       path={preview.path}
       read={readWorkspaceFile}
+      readBinary={readWorkspaceFileBinary}
       close={() => actions.closeFilePreview()}
       t={t}
     />
   )
 })
 
+/**
+ * Whole-image preview: loads the file bytes through the Session Remote and
+ * renders them in the overlay. Failed or oversized reads show the generic
+ * preview error.
+ */
+function ImagePreview({ path, readBinary, t }: {
+  path: string
+  readBinary: WorkspaceImageReader
+  t: ChatViewSlotProps['t']
+}) {
+  const [src, setSrc] = useState<string | null>(null)
+  const [error, setError] = useState(false)
+  useEffect(() => {
+    let live = true
+    let url: string | undefined
+    setSrc(null)
+    setError(false)
+    void readBinary({ path }, new AbortController().signal).then((result) => {
+      if (!live) return
+      if (!result.ok) {
+        setError(true)
+        return
+      }
+      url = imageDataUrl(result.value.mediaType, result.value.data)
+      setSrc(url)
+    }).catch(() => { if (live) setError(true) })
+    return () => {
+      live = false
+      if (url !== undefined && url.startsWith('blob:')) URL.revokeObjectURL(url)
+    }
+  }, [path, readBinary])
+  if (error) return <p className={css.error}>{t('filePreview.error', { message: t('filePreview.imageFailed') })}</p>
+  if (src === null) return <p className={css.notice}>{t('filePreview.loading')}</p>
+  return <img className={css.image} src={src} alt={path} />
+}
+
 /** Full-screen file preview with chunked scrolling. */
-export function FilePreview({ path, read, close, t }: {
+export function FilePreview({ path, read, readBinary, close, t }: {
   path: string
   read: WorkspaceFileReader
+  readBinary: WorkspaceImageReader | null
   close: () => void
   t: ChatViewSlotProps['t']
 }) {
@@ -242,7 +282,11 @@ export function FilePreview({ path, read, close, t }: {
   const canGoDown = !view.eof && view.chunks.length > 0
 
   let body: ReactNode
-  if (view.error !== undefined) {
+  if (isWorkspaceImagePath(path)) {
+    body = readBinary === null
+      ? <p className={css.notice}>{t('filePreview.binary')}</p>
+      : <ImagePreview path={path} readBinary={readBinary} t={t} />
+  } else if (view.error !== undefined) {
     body = <p className={css.error}>{t('filePreview.error', { message: view.error })}</p>
   } else if (view.kind === 'binary') {
     body = <p className={css.notice}>{t('filePreview.binary')}</p>
