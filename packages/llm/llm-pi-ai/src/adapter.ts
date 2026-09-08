@@ -26,6 +26,7 @@
  * @module dsh-llm-pi-ai/adapter
  */
 
+import { randomUUID } from 'node:crypto'
 import { createModels, getSupportedThinkingLevels } from '@earendil-works/pi-ai'
 import type {
   Api,
@@ -212,15 +213,53 @@ function requestHeaders(headers: Readonly<Record<string, string>> | undefined): 
 }
 
 /**
+ * Attach the route's session header once the profile names one: the harness
+ * conversation id the loop stamped, or the per-process fallback when it did
+ * not. The header lands after deployment headers, so a stale static value of
+ * the same name loses — only the conversation id varies per conversation.
+ * @param headers - the merged request headers to extend.
+ * @param sessionHeader - the configured session header name, if any.
+ * @param sessionId - the harness conversation id, when the loop stamped one.
+ * @param fallback - the per-process stable id for an unstamped request.
+ * @returns the extended headers, or `headers` unchanged when none is named.
+ */
+function sessionHeaders(
+  headers: Record<string, string>,
+  sessionHeader: string | undefined,
+  sessionId: string | undefined,
+  fallback: string,
+): Record<string, string> {
+  if (sessionHeader === undefined) return headers
+  return { ...headers, [sessionHeader]: sessionId ?? fallback }
+}
+
+/**
  * pi-ai-backed multi-provider adapter. Each operation reads the current
  * profiles, so a configuration change reaches the next request without a
  * restart; model descriptors come from the collection those profiles built.
  */
 export class PiAiAdapter extends LlmAdapter {
   private snapshot: PiAiSnapshot | undefined
+  /** Stable fallback conversation id by provider route, minted once per process. */
+  private readonly fallbackSessionIds = new Map<string, string>()
 
   constructor(private readonly config: PiAiAdapterOptions) {
     super()
+  }
+
+  /**
+   * The per-process fallback session id for one route. A route whose gateway
+   * requires its session header on every request still names one when the loop
+   * leaves the request unstamped, and the id stays stable so the gateway's
+   * prompt-cache routing keeps working across those requests.
+   */
+  private fallbackSessionId(provider: string): string {
+    let id = this.fallbackSessionIds.get(provider)
+    if (id === undefined) {
+      id = randomUUID()
+      this.fallbackSessionIds.set(provider, id)
+    }
+    return id
   }
 
   /**
@@ -372,15 +411,22 @@ export class PiAiAdapter extends LlmAdapter {
             maxBytes: profile.requestImageMaxBytes,
           },
         }, onReplayDegrade)
+      const sessionId = options.sessionId === undefined ? undefined : String(options.sessionId)
       const events = snapshot.models.streamSimple(model, context, {
         ...profileOptions(profile, reasoning, apiKey),
         ...options.temperature === undefined ? {} : { temperature: options.temperature },
         ...options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens },
-        ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },
+        ...sessionId === undefined ? {} : { sessionId },
         signal: watchdog.signal,
         // Profile headers are deployment-owned; attribution names are
-        // Harness-owned and therefore win collisions.
-        headers: requestHeaders(profile.headers),
+        // Harness-owned and therefore win collisions. The route's session
+        // header (OpenCode Go's relay requires one) rides on top of both.
+        headers: sessionHeaders(
+          requestHeaders(profile.headers),
+          profile.sessionHeader,
+          sessionId,
+          this.fallbackSessionId(options.provider),
+        ),
       })
       const iterator = toStreamChunks(events, model.contextWindow, options.signal)[Symbol.asyncIterator]()
       let exhausted = false

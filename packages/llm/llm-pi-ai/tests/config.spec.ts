@@ -98,3 +98,47 @@ describe('request image policy bounds', () => {
     }).toThrow(message)
   })
 })
+
+describe('session header boundary', () => {
+  it('accepts a valid header name at the schema write', () => {
+    expect(routeWith({ sessionHeader: 'x-opencode-session' })).not.toThrow()
+  })
+
+  it('rejects an empty name at service resolution', () => {
+    expect(() => {
+      assertServiceable(routeWith({ sessionHeader: '' })() as Config)
+    }).toThrow(/empty sessionHeader/)
+  })
+
+  it('rejects a Harness attribution name, which would never reach the wire', () => {
+    const programmatic = {
+      providers: {
+        'acme-gateway': {
+          api: 'openai-completions',
+          baseURL: 'https://acme.test',
+          models: [{ id: 'm' }],
+          sessionHeader: 'User-Agent',
+        },
+      },
+    } as unknown as Config
+    expect(() => {
+      assertServiceable(programmatic)
+    }).toThrow(/attribution name/)
+  })
+
+  it('rejects a header name Fetch cannot send', () => {
+    const programmatic = {
+      providers: {
+        'acme-gateway': {
+          api: 'openai-completions',
+          baseURL: 'https://acme.test',
+          models: [{ id: 'm' }],
+          sessionHeader: 'bad name',
+        },
+      },
+    } as unknown as Config
+    expect(() => {
+      assertServiceable(programmatic)
+    }).toThrow(/not valid for Fetch/)
+  })
+})

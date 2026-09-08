@@ -19,7 +19,7 @@ import z from '@deepseek-ai/schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
-import { resolveRetryPolicy, RetryPolicySchema } from '@deepseek-ai/dsh-llm'
+import { attributionHeaders, resolveRetryPolicy, RetryPolicySchema } from '@deepseek-ai/dsh-llm'
 import type { ResolvedRetryPolicy, RetryPolicyConfig } from '@deepseek-ai/dsh-llm'
 import {
   CACHE_CONTROL_FORMATS,
@@ -146,6 +146,17 @@ export interface PiAiProviderProfile {
   defaultInput?: PiAiModality[]
   /** Provider request headers, validated against Fetch when the profile resolves; Harness attribution wins reserved names. */
   headers?: Record<string, string>
+  /**
+   * Name of the header that carries this route's conversation session id on
+   * every model request. A gateway that routes or prompt-caches per
+   * conversation requires such a header — OpenCode Go's relay rejects a
+   * request without `x-opencode-session` — and no static value names a
+   * conversation, so the adapter fills this header from the harness-stamped
+   * `GenerateOptions.sessionId`, or from a stable per-process fallback when a
+   * request carries none. Harness attribution names are refused here: they win
+   * every collision, so a session header could never reach the wire.
+   */
+  sessionHeader?: string
   /** Provider-neutral pi-ai reasoning level. */
   reasoning?: ModelThinkingLevel
   /** Token budgets used by reasoning providers that support them. */
@@ -323,6 +334,7 @@ const profile = z.object({
   defaultMaxTokens: z.number().step(1).min(1).default(DEFAULT_MAX_TOKENS),
   defaultInput: z.array(z.union(MODALITIES)).default([...DEFAULT_INPUT]),
   headers: z.dict(z.string()),
+  sessionHeader: z.string(),
   reasoning: z.union(THINKING_LEVELS),
   thinkingBudgets,
   cacheRetention: z.union(['none', 'short', 'long']),
@@ -415,6 +427,22 @@ export function resolveProfiles(
       throw new Error(`llm-pi-ai: provider "${provider}" has an empty displayName`)
     }
     assertValidHeaders(provider, source.headers)
+    if (source.sessionHeader !== undefined) {
+      if (source.sessionHeader.length === 0) {
+        throw new Error(
+          `llm-pi-ai: provider "${provider}" has an empty sessionHeader;`
+          + ' name the header that carries this route\'s conversation session id',
+        )
+      }
+      const reserved = new Set(Object.keys(attributionHeaders()).map(name => name.toLowerCase()))
+      if (reserved.has(source.sessionHeader.toLowerCase())) {
+        throw new Error(
+          `llm-pi-ai: provider "${provider}" sessionHeader "${source.sessionHeader}" is a Harness`
+          + ' attribution name, which wins every request-header collision',
+        )
+      }
+      assertValidHeaders(provider, { [source.sessionHeader]: 'conversation' })
+    }
     const streamIdleTimeoutMs = source.streamIdleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS
     if (!Number.isFinite(streamIdleTimeoutMs)
       || streamIdleTimeoutMs <= 0

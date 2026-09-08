@@ -85,6 +85,7 @@ kind: "package-reference"
 | `requestImageMaxBytes` | `1 MiB` | 每张请求图片在 base64 扩展前的编码字节目标 |
 | `maxRequestImageBytes` | `20 MiB` | 带最旧优先卸载的 base64 图片载荷总上限 |
 | `retryPolicy` | normal，5 次重试 | 由 `dsh-llm-retry` 执行的提供方自有重试策略 |
+| `sessionHeader` | 无 | 每次请求携带会话 id 的标头；OpenCode Go 的中继要求 `x-opencode-session` |
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-llm-pi-ai)是每个受支持字段及其 JSDoc 的穷尽式真源。
 
