@@ -85,6 +85,7 @@ Each profile may set a `retryPolicy`; omission uses normal mode with five retrie
 | `requestImageMaxBytes` | `1 MiB` | Encoded-byte target for each request image before base64 expansion |
 | `maxRequestImageBytes` | `20 MiB` | Aggregate base64 image-payload bound with oldest-first offload |
 | `retryPolicy` | normal, 5 retries | Provider-owned retry policy executed by `dsh-llm-retry` |
+| `sessionHeader` | absent | Header carrying the harness conversation session id on every request; OpenCode Go's relay requires `x-opencode-session` |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-llm-pi-ai) is the exhaustive source for every accepted field and its JSDoc.
 
