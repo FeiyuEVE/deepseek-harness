@@ -9,7 +9,7 @@ import type {
   ChatViewSlotProps, CommandNode, CompactionSummaryNode, ContextMessageNode, ConversationNode,
   LegacyConversationSlice, ModelRetryNode, RunningToolCall, SteeringMessageNode,
   ToolCallBlock, ToolResultNode, TurnErrorNode, TurnMaxTokensNode, UseChatNodeTurnData,
-  TranscriptViewMode, UserMessageNode,
+  TranscriptViewMode, MarkdownViewMode, UserMessageNode,
 } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {
   SessionListState, SessionSnapshot,
@@ -267,6 +267,7 @@ function makeHarness(
   // Rows and the harness must observe the same chat-store instance.
   const chat = createChatStore().create()
   const transcriptView = createSnapshotStore<TranscriptViewMode>('compact')
+  const markdownView = createSnapshotStore<MarkdownViewMode>('render')
   const t = makeTranslate(zh, commonZh)
   const toolOwners: Array<{
     callId: string
@@ -392,6 +393,7 @@ function makeHarness(
     useStore: bindSnapshotSelector(chat),
     actions: chat.actions,
     useTranscriptView: bindSnapshotSelector(transcriptView),
+    useMarkdownView: bindSnapshotSelector(markdownView),
     renderSlot,
     SessionProvider: SessionProviderStub,
     viewRequest: null,
@@ -432,6 +434,7 @@ function makeHarness(
     setOutline: (value: unknown) => { outlineValue = value },
     chatScroll, forkAt, toolOwners,
     setTranscriptView: (mode: TranscriptViewMode) => { transcriptView.set(mode) },
+    setMarkdownView: (mode: MarkdownViewMode) => { markdownView.set(mode) },
     setNodeRenderer: (renderer: React.ComponentProps<typeof ChatNodeSeat>['renderSlot']) => {
       nodeSlotOverride = renderer
     },
@@ -1577,6 +1580,25 @@ describe('ChatView', () => {
     act(() => { h.setTranscriptView('compact') })
     expect(turnProcessControl(view.container)?.getAttribute('aria-expanded')).toBe('false')
     expect(processRow.getAttribute('hidden')).toBe('until-found')
+  })
+
+  it('switches assistant Markdown between the rendered document and its raw source', () => {
+    const h = makeHarness({
+      nodes: [user(1, 'question'), assistant(2, '**bold** answer', 1)],
+      turnEnds: new Map([[1, 3]]),
+    })
+    const view = render(<h.ChatView {...h.props} />)
+
+    expect(view.getByText('bold').tagName).toBe('STRONG')
+    expect(view.container.querySelector('pre')).toBeNull()
+
+    act(() => { h.setMarkdownView('raw') })
+    expect(view.container.querySelector('pre')?.textContent).toBe('**bold** answer')
+    expect(view.queryByText('bold')).toBeNull()
+
+    act(() => { h.setMarkdownView('render') })
+    expect(view.getByText('bold').tagName).toBe('STRONG')
+    expect(view.container.querySelector('pre')).toBeNull()
   })
 
   it('folds final-step reasoning under the fallback title when every summary count is zero', () => {

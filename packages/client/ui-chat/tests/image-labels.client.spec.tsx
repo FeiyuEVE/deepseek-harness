@@ -44,6 +44,7 @@ describe('assistant image slot handoff', () => {
     const calls: MessageImagesRenderOwner[] = []
     const view = render(
       <AssistantMarkdown
+        markdownView="render"
         t={t}
         blocks={[{ kind: 'image', attachment }]}
         streaming={false}
@@ -59,6 +60,7 @@ describe('assistant image slot handoff', () => {
     const calls: MessageImagesRenderOwner[] = []
     const view = render(
       <AssistantMarkdown
+        markdownView="render"
         t={t}
         blocks={[
           { kind: 'image', attachment },
@@ -80,6 +82,7 @@ describe('assistant image slot handoff', () => {
     const calls: MessageImagesRenderOwner[] = []
     const view = render(
       <AssistantMarkdown
+        markdownView="render"
         t={t}
         blocks={[
           { kind: 'text', text: 'before' },

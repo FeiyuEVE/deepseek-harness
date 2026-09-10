@@ -19,7 +19,7 @@ import type {
   ChatNodeProcessSource, ChatNodeSource, ChatSnapshot, ChatTurnProcessPresentation,
 } from './snapshot.ts'
 import type { TurnProcessSpec } from './turn-process.ts'
-import type { TranscriptViewMode } from '../../chat-settings.ts'
+import type { TranscriptViewMode, MarkdownViewMode } from '../../chat-settings.ts'
 
 /** Selector hook over the current Conversation binding's Chat target. */
 export type UseChat = SnapshotSelectorHook<ChatSnapshot>
@@ -93,6 +93,8 @@ export interface ChatNodeOwnerProps {
   loadImage: MessageImageLoader
   renderMessageImages: RenderMessageImages
   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
+  /** Presentation of this Node's assistant Markdown blocks. */
+  markdownView: MarkdownViewMode
   /** Turn-process state when this Node belongs to a projected Turn. */
   turnProcess?: TurnProcessOwnerProps | undefined
 }
@@ -133,6 +135,8 @@ export interface ChatViewInjected {
   hooks: {
     /** Persisted completed-Turn transcript presentation. */
     transcriptView: SnapshotStore<TranscriptViewMode>
+    /** Persisted assistant-Markdown presentation. */
+    markdownView: SnapshotStore<MarkdownViewMode>
   }
   keyedHooks: {
     /** Resolve the stable source for one Chat Node key. */

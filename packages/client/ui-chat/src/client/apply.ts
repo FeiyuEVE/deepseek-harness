@@ -30,8 +30,10 @@ import { registerChatNodeRenderers } from './chat/register-node-renderers.ts'
 import { StatsPills } from './chat/StatsPills.tsx'
 import { registerConversationNodes } from './conversation-nodes/register.ts'
 import { en, NS, zh } from './locale.ts'
+import { MarkdownViewRow, type MarkdownViewRowInjected } from './settings/MarkdownViewRow.tsx'
 import { TranscriptViewRow, type TranscriptViewRowInjected } from './settings/TranscriptViewRow.tsx'
 import { createChatStore } from './stores.ts'
+import { MarkdownViewPolicy } from './markdown-view.ts'
 import { TranscriptViewPolicy } from './transcript-view.ts'
 import { CHAT_SETTINGS_NAMESPACE, type ChatSettings } from '../chat-settings.ts'
 import { useTurnDataValue } from './chat/use-turn-data.ts'
@@ -82,6 +84,9 @@ export function apply(ctx: Context): void {
   const transcriptView = new TranscriptViewPolicy(
     ctx.settingsScope.bind<ChatSettings>({ namespace: CHAT_SETTINGS_NAMESPACE }),
   )
+  const markdownView = new MarkdownViewPolicy(
+    ctx.settingsScope.bind<ChatSettings>({ namespace: CHAT_SETTINGS_NAMESPACE }),
+  )
 
   ctx.slots.inject('settings.general.item', () => ctx.slots.register({
     name: 'settings.general.item',
@@ -93,6 +98,17 @@ export function apply(ctx: Context): void {
       setTranscriptView: (mode) => { transcriptView.setMode(mode) },
     }),
   }, TranscriptViewRow))
+
+  ctx.slots.inject('settings.general.item', () => ctx.slots.register({
+    name: 'settings.general.item',
+    id: 'markdown-view',
+    order: 13,
+    locale: NS,
+    inject: (): MarkdownViewRowInjected => ({
+      hooks: { markdownView: markdownView.mode },
+      setMarkdownView: (mode) => { markdownView.setMode(mode) },
+    }),
+  }, MarkdownViewRow))
 
   ctx.slots.inject('conversation.view', () => {
     const disposeView = ctx.slots.register({
@@ -112,7 +128,7 @@ export function apply(ctx: Context): void {
         const session = binding.session
         const chat = chatSource(binding)
         return {
-          hooks: { transcriptView: transcriptView.mode },
+          hooks: { transcriptView: transcriptView.mode, markdownView: markdownView.mode },
           keyedHooks: {
             chatNode: key => chat.getSnapshot().nodes.source(key),
             chatNodeProcess: key => chat.getSnapshot().nodes.processSource(key),
