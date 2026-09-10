@@ -38,6 +38,8 @@ export const en = {
   'json.expandNode': 'Expand JSON node',
   'json.label': 'JSON',
   'markdown.footnotes': 'Footnotes',
+  'markdown.image.open': 'View full image',
+  'markdown.image.close': 'Close image preview',
   'markdown.truncatedCharacters': '… truncated at {total} characters',
   'number.thousand': '{value}K',
   'number.million': '{value}M',

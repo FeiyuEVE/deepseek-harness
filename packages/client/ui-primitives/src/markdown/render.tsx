@@ -16,7 +16,7 @@
  * may add node types this renderer has no mapping for.
  */
 
-import { Fragment, createElement, useState } from 'react'
+import { Fragment, createElement, useEffect, useRef, useState } from 'react'
 import type { Key, ReactNode } from 'react'
 import clsx from 'clsx'
 import type * as Md from 'mdast'
@@ -25,6 +25,8 @@ import { normalizeUri } from 'micromark-util-sanitize-uri'
 import { CodeBlock } from './CodeBlock.tsx'
 import { renderTexToReact } from './katex.tsx'
 import { LinkIcon, classifyLinkPath } from '../LinkIcon.tsx'
+import { Modal } from '../Modal.tsx'
+import { IconCloseOutline16 } from '../icons/index.tsx'
 import type { PositionedBlock } from './incremental.ts'
 import css from './MarkdownText.module.css'
 
@@ -36,10 +38,24 @@ export interface MarkdownCodeLabels {
   copiedLabel: string
 }
 
+/**
+ * Full-size viewer chrome for a rendered Markdown image, supplied by an owner
+ * that wants the zoom affordance. Absent labels leave images non-interactive:
+ * the renderer ships no viewer copy of its own.
+ */
+export interface MarkdownImageViewerLabels {
+  /** Accessible name of the image button that opens the viewer. */
+  open: string
+  /** Accessible name of the open viewer dialog and its close control. */
+  close: string
+}
+
 /** Localized chrome for a Markdown document. */
 export interface MarkdownLabels {
   code: MarkdownCodeLabels
   footnotes: string
+  /** Image-viewer chrome; absent leaves rendered images inert. */
+  image?: MarkdownImageViewerLabels | undefined
 }
 
 function sanitizeUrl(url: string): string {
@@ -567,14 +583,38 @@ function renderImage(url: string, alt: string, key: Key, context: MarkdownRender
   if (imageSrc === undefined) {
     return <span key={key} className={css.imageAlt}>{alt}</span>
   }
-  return <MarkdownImage key={`${key}:${imageSrc}`} src={imageSrc} alt={alt} destination={url} />
+  // The zoom affordance is interactive, so it never nests inside an anchor:
+  // an authored link wrapping only images keeps its plain rendering there.
+  const viewer = context.inLink === true ? undefined : context.labels.image
+  return (
+    <MarkdownImage
+      key={`${key}:${imageSrc}`}
+      src={imageSrc}
+      alt={alt}
+      destination={url}
+      viewer={viewer}
+    />
+  )
 }
 
-/** Failed loads retain the authored alt or destination; a new source remounts the image. */
-function MarkdownImage({ src, alt, destination }: { src: string; alt: string; destination: string }): ReactNode {
+/**
+ * One rendered Markdown image. Failed loads retain the authored alt or
+ * destination, and a new source remounts the image. With `viewer` chrome the
+ * image sits in a labelled button that opens the full-size viewer — the
+ * inline size would otherwise leave charts, screenshots, and diagrams
+ * unreadable on narrow viewports; without it the image stays exactly as
+ * authored.
+ */
+function MarkdownImage({ src, alt, destination, viewer }: {
+  src: string
+  alt: string
+  destination: string
+  viewer: MarkdownImageViewerLabels | undefined
+}): ReactNode {
   const [failed, setFailed] = useState(false)
+  const [zoomed, setZoomed] = useState(false)
   if (failed) return <span className={css.imageAlt}>{alt || destination}</span>
-  return (
+  const image = (
     <img
       className={css.image}
       src={src}
@@ -584,6 +624,70 @@ function MarkdownImage({ src, alt, destination }: { src: string; alt: string; de
       decoding="async"
       referrerPolicy="no-referrer"
     />
+  )
+  if (viewer === undefined) return image
+  return (
+    <>
+      <button
+        type="button"
+        className={css.imageZoom}
+        aria-label={viewer.open}
+        title={viewer.open}
+        onClick={() => { setZoomed(true) }}
+      >
+        {image}
+      </button>
+      {zoomed && (
+        <MarkdownImageViewer
+          src={src}
+          alt={alt}
+          labels={viewer}
+          onClose={() => { setZoomed(false) }}
+        />
+      )}
+    </>
+  )
+}
+
+/**
+ * Viewport-sized viewer for one rendered Markdown image, mounted only while
+ * open. The shared {@link Modal} supplies the body portal, the page mask, the
+ * Escape binding, and the dialog semantics; the card chrome is replaced by the
+ * image itself. Focus moves to the close control on open and returns to the
+ * opener on unmount.
+ */
+function MarkdownImageViewer({ src, alt, labels, onClose }: {
+  src: string
+  alt: string
+  labels: MarkdownImageViewerLabels
+  onClose: () => void
+}): ReactNode {
+  const closeRef = useRef<HTMLButtonElement | null>(null)
+  const restoreRef = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    restoreRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    closeRef.current?.focus()
+    return () => { restoreRef.current?.focus() }
+  }, [])
+  return (
+    <Modal
+      headless
+      open
+      title={labels.open}
+      onClose={onClose}
+      className={clsx(css.imageViewer)}
+    >
+      <img className={css.imageViewerImage} src={src} alt={alt} />
+      <button
+        ref={closeRef}
+        type="button"
+        className={css.imageViewerClose}
+        aria-label={labels.close}
+        onClick={onClose}
+      >
+        <IconCloseOutline16 size={16} />
+      </button>
+    </Modal>
   )
 }
 
