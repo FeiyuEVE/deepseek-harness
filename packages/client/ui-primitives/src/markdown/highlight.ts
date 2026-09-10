@@ -32,11 +32,13 @@ type LangModule = { default: typeof langTs }
 
 /**
  * Grammars the singleton loads at boot; each entry's own `name` is the id
- * `codeToTokens`/`codeToHtml` resolve. The JS-family aliases in
- * {@link LANG_ALIASES} resolve per flavor: `typescript`/`ts` here, and the
- * dedicated `javascript`/`jsx`/`tsx` grammars in {@link LAZY_GRAMMARS} (shiki
- * tokenizes plain JS more precisely with its own grammar than with the
- * TypeScript one, and JSX/TSX need their dedicated grammars for JSX elements).
+ * `codeToTokens`/`codeToHtml` resolve. The JS-family aliases (js/jsx/ts/tsx)
+ * resolve to the TypeScript grammar rather than a separate one: it tokenizes
+ * plain TS/JS exactly, and JSX/TSX approximately (shiki's TS grammar is not the
+ * dedicated TSX grammar, so JSX elements tokenize imperfectly) — an accepted
+ * trade to keep the boot set to one JS-family grammar, and to keep the most
+ * common fence language highlighted on its first paint instead of after a lazy
+ * import. The wider set loads lazily through {@link LAZY_GRAMMARS}.
  */
 const LANGS = [langTs, langBash, langJson]
 
@@ -50,9 +52,6 @@ const LANGS = [langTs, langBash, langJson]
  * already loaded, so no alias value ever points at a missing entry here.
  */
 const LAZY_GRAMMARS = new Map<string, () => Promise<LangModule>>([
-  ['javascript', () => import('@shikijs/langs/javascript')],
-  ['jsx', () => import('@shikijs/langs/jsx')],
-  ['tsx', () => import('@shikijs/langs/tsx')],
   ['python', () => import('@shikijs/langs/python')],
   ['ruby', () => import('@shikijs/langs/ruby')],
   ['go', () => import('@shikijs/langs/go')],
@@ -132,12 +131,12 @@ const LAZY_GRAMMARS = new Map<string, () => Promise<LangModule>>([
 const LANG_ALIASES = new Map<string, string>([
   ['typescript', 'typescript'],
   ['ts', 'typescript'],
-  ['tsx', 'tsx'],
-  ['javascript', 'javascript'],
-  ['js', 'javascript'],
-  ['mjs', 'javascript'],
-  ['cjs', 'javascript'],
-  ['jsx', 'jsx'],
+  ['tsx', 'typescript'],
+  ['javascript', 'typescript'],
+  ['js', 'typescript'],
+  ['mjs', 'typescript'],
+  ['cjs', 'typescript'],
+  ['jsx', 'typescript'],
   ['shellscript', 'shellscript'],
   ['bash', 'shellscript'],
   ['sh', 'shellscript'],
