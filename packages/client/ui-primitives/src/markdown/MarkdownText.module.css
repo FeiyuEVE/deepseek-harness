@@ -286,6 +286,20 @@
   font-style: italic;
 }
 
+/* Zoom opener for a rendered image: fit-content keeps the click target on the
+   image itself, and the reset chrome leaves the img's own box in charge. */
+.imageZoom {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  cursor: zoom-in;
+}
+
 .image {
   display: block;
   width: auto;
@@ -295,6 +309,54 @@
   border-radius: 8px;
   background: var(--dsw-alias-bg-base);
   object-fit: contain;
+}
+
+/* Viewer layer: the image is the card's content, so the shared Modal's dialog
+   chrome reduces to the plate and radius it already paints. Doubled class
+   beats Modal's own .dialog regardless of stylesheet order. */
+.imageViewer.imageViewer {
+  width: auto;
+  max-width: 100%;
+  padding: 0;
+  gap: 0;
+  border-radius: 12px;
+  background: var(--dsw-specific-input-major);
+  box-shadow: var(--dsw-shadow-lv3);
+  /* Elevated surface: rebind the scrollbar indirection here, on the surface,
+     so it inherits down to whichever descendant scrolls (the rebinding
+     contract in ui-theme styles/scrollbar.css). */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+.imageViewerImage {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 48px);
+  object-fit: contain;
+}
+
+/* Fixed to the viewport, not the card: the control stays in the corner of a
+   tall image instead of scrolling away with it. */
+.imageViewerClose {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0.5px solid var(--dsw-alias-border-l2-darkmode-thin);
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--dsw-specific-input-major);
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+
+.imageViewerClose:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 
 /* Inline file mention: the same link language this sheet gives anchors (and

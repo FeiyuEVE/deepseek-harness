@@ -20,7 +20,8 @@ import {
   apply as applyChat, EMPTY_CHAT_SNAPSHOT, inject as injectChat,
 } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {
-  ChatNodeTurnDataInjected, ChatSnapshot, TranscriptViewRowInjected, UseChatNodeTurnData,
+  ChatNodeTurnDataInjected, ChatSnapshot, MarkdownViewRowInjected, TranscriptViewRowInjected,
+  UseChatNodeTurnData,
 } from '@deepseek-ai/dsh-client-ui-chat/client'
 import { CHAT_SETTINGS_NAMESPACE, type ChatSettings } from '../src/chat-settings.ts'
 
@@ -88,7 +89,25 @@ describe('Chat apply wiring', () => {
     expect(b.runtime.slots.entries('conversation.composer.dock').map(row => row.options.id))
       .toEqual(['stats'])
     expect(b.runtime.slots.entries('settings.general.item').map(row => row.options.id))
-      .toEqual(['transcript-view', 'composer-enter'])
+      .toEqual(['transcript-view', 'markdown-view', 'composer-enter'])
+    await b.runtime.dispose()
+  })
+
+  it('mirrors the Host Markdown preference into its Settings row', async () => {
+    const b = await bench()
+    const row = b.runtime.slots.entries('settings.general.item')
+      .find(entry => entry.options.id === 'markdown-view')!
+    const face = (row.inject as unknown as () => MarkdownViewRowInjected)()
+
+    expect(face.hooks.markdownView.getSnapshot()).toBe('render')
+    face.setMarkdownView('raw')
+    expect(face.hooks.markdownView.getSnapshot()).toBe('raw')
+    expect(b.chatSettings.set).toHaveBeenCalledWith('markdownView', 'raw')
+
+    b.chatSettings.publish({
+      status: 'ready', value: { transcriptView: 'compact', markdownView: 'render' }, revision: 1, writable: true,
+    })
+    expect(face.hooks.markdownView.getSnapshot()).toBe('render')
     await b.runtime.dispose()
   })
 
@@ -104,7 +123,7 @@ describe('Chat apply wiring', () => {
     expect(b.chatSettings.set).toHaveBeenCalledWith('transcriptView', 'normal')
 
     b.chatSettings.publish({
-      status: 'ready', value: { transcriptView: 'compact' }, revision: 1, writable: true,
+      status: 'ready', value: { transcriptView: 'compact', markdownView: 'render' }, revision: 1, writable: true,
     })
     expect(face.hooks.transcriptView.getSnapshot()).toBe('compact')
     await b.runtime.dispose()

@@ -23,7 +23,10 @@ import type { MarkdownFileMentions, MarkdownLabels, MarkdownPathImages, Markdown
 import 'katex/dist/katex.min.css'
 import css from './MarkdownText.module.css'
 
-export type { MarkdownCodeLabels, MarkdownFileMentions, MarkdownLabels, MarkdownPathImages } from './render.tsx'
+export type {
+  MarkdownCodeLabels, MarkdownFileMentions, MarkdownImageViewerLabels, MarkdownLabels,
+  MarkdownPathImages,
+} from './render.tsx'
 
 /** One settled full render: parse with math, resolve references, append the footnote section. */
 function renderSettled(
@@ -151,9 +154,11 @@ class StreamingRenderer {
  * `streaming` parses incrementally across chunks and highlights fences as
  * they grow (each fence re-tokenizes only appended text; TeX stays literal
  * until the finalize swap so incomplete formulae never flash errors);
- * `labels` forwards localized fence and footnote chrome — pass a
- * reference-stable object (memoized per locale revision), because a new
- * identity discards the streaming render cache mid-message. `fileMentions`
+ * `labels` forwards localized fence, footnote, and optional image-viewer
+ * chrome — pass a reference-stable object (memoized per locale revision),
+ * because a new identity discards the streaming render cache mid-message. A
+ * labels object carrying `image` makes every rendered image a button that
+ * opens the full-size viewer; without it images stay non-interactive. `fileMentions`
  * links inline-code tokens its resolver recognizes as real files, and
  * `pathImages` rewrites image destinations that are local file paths into
  * displayable URLs its resolver vouches for; both vocabularies are the

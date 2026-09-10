@@ -17,6 +17,7 @@ describe('ReasoningRow', () => {
   it('follows the latest streaming line, then restores the settled first line', () => {
     const view = render(
       <AssistantMarkdown
+        markdownView="render"
         t={t}
         blocks={[{ kind: 'reasoning', text: 'Inspect the session\nNewest reasoning tokens' }]}
         streaming
@@ -29,6 +30,7 @@ describe('ReasoningRow', () => {
 
     view.rerender(
       <AssistantMarkdown
+        markdownView="render"
         t={t}
         blocks={[{ kind: 'reasoning', text: 'Inspect the session\nNewest reasoning tokens keep arriving' }]}
         streaming
@@ -40,6 +42,7 @@ describe('ReasoningRow', () => {
 
     view.rerender(
       <AssistantMarkdown
+        markdownView="render"
         t={t}
         blocks={[{ kind: 'reasoning', text: 'Inspect the session\nNewest reasoning tokens keep arriving\n' }]}
         streaming={false}
@@ -54,6 +57,7 @@ describe('ReasoningRow', () => {
   it('expands from either Think or the reasoning summary', () => {
     const view = render(
       <AssistantMarkdown
+        markdownView="render"
         t={t}
         blocks={[{ kind: 'reasoning', text: 'Inspect the session\nCheck persistence' }]}
         streaming={false}
@@ -84,6 +88,7 @@ describe('ReasoningRow', () => {
   ])('strips double-asterisk markers from the $label summary without changing the reasoning body', ({ text, streaming }) => {
     const view = render(
       <AssistantMarkdown
+        markdownView="render"
         t={t}
         blocks={[{ kind: 'reasoning', text }]}
         streaming={streaming}
@@ -101,6 +106,7 @@ describe('ReasoningRow', () => {
   it('expanded Think drops the inline summary and renders plain prose, no IN card', () => {
     const view = render(
       <AssistantMarkdown
+        markdownView="render"
         t={t}
         blocks={[{ kind: 'reasoning', text: 'Inspect the session\nCheck persistence' }]}
         streaming={false}
