@@ -27,7 +27,7 @@ import {
   probe,
   probeNoFollow,
   readForEdit,
-  readBytesRange as readLocalBytesRange,
+  readByteWindow,
   readTextForDiff,
   readWholeBytes,
   readWholeText,
@@ -157,8 +157,8 @@ export class LocalFileSystem extends FileSystem {
     return readWholeBytes({ displayPath: target.displayPath, targetKey: target.targetKey }, signal, maxBytes, this.internals)
   }
 
-  override async readBytesRange(target: FsTarget, offset: number, limit: number, signal?: AbortSignal): Promise<Uint8Array> {
-    return readLocalBytesRange({ displayPath: target.displayPath, targetKey: target.targetKey }, offset, limit, signal)
+  override async readByteRange(target: FsTarget, range: { offset: number; length: number }, signal?: AbortSignal): Promise<Uint8Array> {
+    return readByteWindow({ displayPath: target.displayPath, targetKey: target.targetKey }, range, signal)
   }
 
   override async listDir(target: FsTarget, signal?: AbortSignal): Promise<FsDirEntry[]> {

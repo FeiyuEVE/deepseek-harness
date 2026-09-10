@@ -292,56 +292,50 @@ export class E2BFileSystem extends FileSystem {
     return whole
   }
 
-  override async readBytesRange(target: FsTarget, offset: number, limit: number, signal?: AbortSignal): Promise<Uint8Array> {
+  override async readByteRange(target: FsTarget, range: { offset: number; length: number }, signal?: AbortSignal): Promise<Uint8Array> {
     const sandbox = await this.ctx.e2b.getSandbox()
-    const info = await this.requireRegular(target, signal)
-    if (info.size !== undefined && offset >= info.size) return new Uint8Array(0)
-    // The remote SDK exposes no seek; skipping the prefix in the stream is the
-    // portable range read. The stat preflight bounds the skip so a post-stat
-    // grower only costs the transferred prefix, never an unbounded buffer.
+    await this.requireRegular(target, signal)
+    if (range.length === 0) return new Uint8Array(0)
+    // The SDK streams only from the file's start: skip to `offset`, keep
+    // `length` bytes, and cancel the stream there, so no more than the window
+    // beyond the skipped prefix is ever transferred.
     const stream = await openReadStream(sandbox, target, signal)
     const reader = stream.getReader()
-    const chunks: Uint8Array[] = []
-    let skipped = 0
-    let bytes = 0
-    let completed = false
+    const window = new Uint8Array(range.length)
+    const end = range.offset + range.length
+    let position = 0
+    let filled = 0
+    let drained = false
     try {
-      while (bytes < limit) {
+      while (filled < range.length) {
         assertNotAborted(signal, 'read')
         const next = await reader.read()
-        if (next.done) break
-        const chunk = next.value
-        if (skipped + chunk.byteLength <= offset) {
-          skipped += chunk.byteLength
-          continue
+        if (next.done) {
+          drained = true
+          break
         }
-        const start = Math.max(0, offset - skipped)
-        const take = Math.min(chunk.byteLength - start, limit - bytes)
-        chunks.push(chunk.subarray(start, start + take))
-        bytes += take
-        skipped += chunk.byteLength
+        const from = Math.max(range.offset, position)
+        const to = Math.min(end, position + next.value.byteLength)
+        if (to > from) {
+          window.set(next.value.subarray(from - position, to - position), filled)
+          filled += to - from
+        }
+        position += next.value.byteLength
       }
-      completed = true
     } catch (error: unknown) {
       throw mapError(error, 'read', target.displayPath, signal)
     } finally {
-      if (!completed) {
+      if (!drained) {
         try {
           await reader.cancel()
         } catch (_streamCancellationFailure) {
-          // The read already failed; a cancellation failure on the abandoned
-          // remote stream adds nothing actionable for the caller.
+          // The window is complete or the read already failed; a cancellation
+          // failure on the abandoned remote stream adds nothing actionable.
         }
       }
       reader.releaseLock()
     }
-    const range = new Uint8Array(bytes)
-    let cursor = 0
-    for (const chunk of chunks) {
-      range.set(chunk, cursor)
-      cursor += chunk.byteLength
-    }
-    return range
+    return filled === range.length ? window : window.subarray(0, filled)
   }
 
   override async streamText(target: FsTarget, signal?: AbortSignal): Promise<AsyncIterable<string>> {

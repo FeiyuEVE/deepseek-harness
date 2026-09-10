@@ -19,21 +19,18 @@ import {
   collectReferenceTargets, createReferenceTargets, renderBlocks, renderFootnoteSection,
   wrapBlockChildren,
 } from './render.tsx'
-import type {
-  MarkdownFileMentions, MarkdownImageResolver, MarkdownLabels, MarkdownRenderContext,
-  ReferenceTargets,
-} from './render.tsx'
+import type { MarkdownFileMentions, MarkdownLabels, MarkdownPathImages, MarkdownRenderContext, ReferenceTargets } from './render.tsx'
 import 'katex/dist/katex.min.css'
 import css from './MarkdownText.module.css'
 
-export type { MarkdownCodeLabels, MarkdownFileMentions, MarkdownImageLabels, MarkdownImageResolver, MarkdownLabels } from './render.tsx'
+export type { MarkdownCodeLabels, MarkdownFileMentions, MarkdownLabels, MarkdownPathImages } from './render.tsx'
 
 /** One settled full render: parse with math, resolve references, append the footnote section. */
 function renderSettled(
   text: string,
   labels: MarkdownLabels,
   fileMentions: MarkdownFileMentions | undefined,
-  resolveImage: MarkdownImageResolver | undefined,
+  pathImages: MarkdownPathImages | undefined,
 ): ReactNode[] {
   const root = parseGfmWithMath(text)
   const targets = createReferenceTargets()
@@ -42,7 +39,7 @@ function renderSettled(
     streaming: false,
     labels,
     fileMentions,
-    resolveImage,
+    pathImages,
     targets,
     footnoteOrder: [],
     footnoteCounts: new Map(),
@@ -111,6 +108,7 @@ class StreamingRenderer {
         streaming: true,
         labels: this.labels,
         fileMentions: undefined,
+        pathImages: undefined,
         targets: frameTargets,
         footnoteOrder: this.frozenFootnoteOrder,
         footnoteCounts: this.frozenFootnoteCounts,
@@ -129,6 +127,7 @@ class StreamingRenderer {
       streaming: true,
       labels: this.labels,
       fileMentions: undefined,
+      pathImages: undefined,
       targets: frameTargets,
       footnoteOrder: [...this.frozenFootnoteOrder],
       footnoteCounts: new Map(this.frozenFootnoteCounts),
@@ -155,36 +154,35 @@ class StreamingRenderer {
  * `labels` forwards localized fence and footnote chrome — pass a
  * reference-stable object (memoized per locale revision), because a new
  * identity discards the streaming render cache mid-message. `fileMentions`
- * links inline-code tokens its resolver recognizes as real files; this is
- * the single streaming gate — it applies to settled renders only, because a
+ * links inline-code tokens its resolver recognizes as real files, and
+ * `pathImages` rewrites image destinations that are local file paths into
+ * displayable URLs its resolver vouches for; both vocabularies are the
+ * single streaming gate — they apply to settled renders only, because a
  * streaming message's vocabulary is not final and frozen cached elements
- * must not bake in handlers that could go stale. `resolveImage` opens the
- * same gate: non-HTTP(S) image sources resolve against the owner's workspace
- * vocabulary only once a message settles.
+ * must not bake in handlers that could go stale.
  * @returns A GFM document with TeX math rendered through KaTeX; raw HTML,
  * relative links, and unsafe protocols are disabled, while absolute HTTP(S)
- * images render directly. A rendered image opens a full-size viewer on
- * activation (tap on handheld surfaces).
+ * images render directly.
  */
-export const MarkdownText = memo(function MarkdownText({ text, streaming = false, labels, fileMentions, resolveImage }: {
+export const MarkdownText = memo(function MarkdownText({ text, streaming = false, labels, fileMentions, pathImages }: {
   text: string
   streaming?: boolean
   labels: MarkdownLabels
   fileMentions?: MarkdownFileMentions | undefined
-  resolveImage?: MarkdownImageResolver | undefined
+  pathImages?: MarkdownPathImages | undefined
 }) {
   const streamRef = useRef<StreamingRenderer | null>(null)
   const streamLabelsRef = useRef<MarkdownLabels>(labels)
   const children = useMemo(() => {
     if (!streaming) {
       streamRef.current = null
-      return renderSettled(text, labels, fileMentions, resolveImage)
+      return renderSettled(text, labels, fileMentions, pathImages)
     }
     if (streamRef.current === null || streamLabelsRef.current !== labels) {
       streamRef.current = new StreamingRenderer(labels)
       streamLabelsRef.current = labels
     }
     return streamRef.current.render(text)
-  }, [text, streaming, labels, fileMentions, resolveImage])
+  }, [text, streaming, labels, fileMentions, pathImages])
   return <div className={css.markdown}>{children}</div>
 })

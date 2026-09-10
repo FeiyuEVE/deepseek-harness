@@ -242,7 +242,6 @@ function markdownLabels(t: TrajectoryTranslate): MarkdownLabels {
   return {
     code: { copyLabel: t('copy'), copiedLabel: t('copied') },
     footnotes: t('markdown.footnotes'),
-    image: { open: t('markdown.image.open'), close: t('markdown.image.close') },
   }
 }
 
@@ -955,6 +954,9 @@ function markdownSource(record: TableRecord): string | undefined {
 
 function detailTabs(record: TableRecord): readonly DetailTabItem[] {
   if (record.cell.kind === 'system') {
+    if (record.cell.promptDetail === undefined && record.cell.systemPromptDetail !== undefined) {
+      return SYSTEM_PROMPT_TABS.filter(tab => tab.id === 'system-prompt')
+    }
     return record.cell.previousPromptDetail === undefined
       ? SYSTEM_PROMPT_TABS
       : SYSTEM_UPDATE_TABS
@@ -1910,6 +1912,7 @@ export function TrajectoryTable({
     overscan: VIRTUAL_OVERSCAN_ROWS,
     scrollMargin: virtualScrollMargin,
     scrollEndThreshold: BOTTOM_FOLLOW_THRESHOLD_PX,
+    followOnAppend: 'auto',
   })
   const virtualIndexByRecordId = useMemo(() => {
     const indexes = new Map<string, number>()
@@ -1961,7 +1964,8 @@ export function TrajectoryTable({
   const selectedPreviousPrompt = selected?.cell.kind === 'system'
     ? selected.cell.previousPromptDetail
     : undefined
-  const promptSelected = selectedPrompt !== undefined
+  const selectedSystemPrompt = selectedPrompt?.system ?? selected?.cell.systemPromptDetail
+  const promptSelected = selectedSystemPrompt !== undefined
   const selectedState = selected === undefined ? undefined : stateOf(selected)
   const selectedRequestInfo = selectedRequest === null
     ? undefined
@@ -2285,8 +2289,7 @@ export function TrajectoryTable({
       return
     }
     if (!followsTableTail.current) return
-    if (virtualizationEnabled) rowVirtualizer.scrollToEnd({ behavior: 'auto' })
-    else pane.scrollTop = pane.scrollHeight
+    if (!virtualizationEnabled) pane.scrollTop = pane.scrollHeight
   }, [
     historyLoading,
     historyStartSeq,
@@ -2948,7 +2951,7 @@ export function TrajectoryTable({
                 t={t}
               />
             )}
-            {promptSelected
+            {selectedPrompt !== undefined
               && selectedPreviousPrompt !== undefined
               && activeTab === 'diff' && (
               <SystemPromptDiff
@@ -2958,15 +2961,15 @@ export function TrajectoryTable({
               />
             )}
             {promptSelected && activeTab === 'system-prompt' && (
-              selectedPrompt.system === ''
+              selectedSystemPrompt === ''
                 ? <p className={css.noPayload}>{t('record.systemPromptMissing')}</p>
                 : (
                   <div className={`${css.markdownPayload} ${css.systemPrompt}`}>
-                    <MarkdownText text={selectedPrompt.system} labels={markdownLabels(t)} />
+                    <MarkdownText text={selectedSystemPrompt} labels={markdownLabels(t)} />
                   </div>
                 )
             )}
-            {promptSelected && activeTab === 'tools' && (
+            {selectedPrompt !== undefined && activeTab === 'tools' && (
               <ToolCatalog tools={selectedPrompt.tools} t={t} />
             )}
             {!promptSelected

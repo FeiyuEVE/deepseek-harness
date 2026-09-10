@@ -9,6 +9,7 @@ import type {
 } from '@deepseek-ai/dsh-api-remotes/client'
 import type {
   SessionAddress,
+  SessionAssistantStreamBaseline,
   SessionControlBaseline,
   SessionControlFrame,
   SessionFollowFrame,
@@ -18,8 +19,6 @@ import type {
   SessionProjectionBaseline,
   SessionSelectModelRequest,
   SessionSelectModelValue,
-  SessionReadWorkspaceFileBinaryValue,
-  SessionReadWorkspaceFileValue,
 } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { WorkspaceRemote } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { WorkspaceFollowFrame } from '@deepseek-ai/dsh-api-workspace-controller/types'
@@ -29,7 +28,7 @@ import {
   type RemoteStreamOptions,
 } from '@deepseek-ai/dsh-api-gateway/client'
 import type { SessionRemotes } from '../src/client/sessions/remotes.ts'
-import { historyRecordLastSeq } from '../src/client/sessions/history-records.ts'
+import { followSnapshot, pageThrough } from './remote/history.client.ts'
 
 const AVAILABLE_STREAM_CONNECTION = {
   generation: {
@@ -149,19 +148,6 @@ export class FakeApiClient {
   onCancel: (payload: unknown) => Promise<RemoteResult<{ accepted: true }>> = () => Promise.resolve(ok({ accepted: true as const }))
   onOpenWorkspacePath: (payload: unknown) => Promise<RemoteResult<{ opened: true }>> =
     () => Promise.resolve(ok({ opened: true as const }))
-  onReadWorkspaceFile: (request: unknown, signal?: AbortSignal) => Promise<RemoteResult<SessionReadWorkspaceFileValue>> =
-    (request) => {
-      void request
-      return Promise.resolve(ok({
-        content: '', kind: 'text', size: 0, offset: 0, eof: true,
-      }))
-    }
-  onReadWorkspaceFileBinary: (request: unknown, signal?: AbortSignal) => Promise<RemoteResult<SessionReadWorkspaceFileBinaryValue>> =
-    (request, signal) => {
-      void request
-      void signal
-      return Promise.resolve(ok({ mediaType: 'image/png', data: 'aGk=', size: 2 }))
-    }
 
   private readonly followConns = new Map<SessionId, ValueStreamConn<SessionFollowFrame>[]>()
   private readonly controlConns: ValueStreamConn<SessionControlFrame>[] = []
@@ -172,6 +158,9 @@ export class FakeApiClient {
     queues: {},
     jobs: {},
     projections: {},
+  }
+  assistantStreamBaseline: SessionAssistantStreamBaseline = {
+    revision: 0,
   }
   workspaceBaseline: Extract<WorkspaceFollowFrame, { type: 'baseline' }>['value'] = {
     items: [],
@@ -247,16 +236,6 @@ export class FakeApiClient {
           payload,
           this.onOpenWorkspacePath(payload),
         ),
-        readWorkspaceFile: (request, signal) => this.record(
-          'session.readWorkspaceFile',
-          request,
-          this.onReadWorkspaceFile(request, signal),
-        ),
-        readWorkspaceFileBinary: (request, signal) => this.record(
-          'session.readWorkspaceFileBinary',
-          request,
-          this.onReadWorkspaceFileBinary(request, signal),
-        ),
         page: request => this.page(request),
         follow: (request, signal) => this.openFollow(request, signal),
         control: signal => this.openControl(signal),
@@ -301,7 +280,7 @@ export class FakeApiClient {
   /** Push one live Session event to every follower of that Session. */
   async pushFollow(
     sessionId: SessionId,
-    frame: Extract<SessionFollowFrame, { type: 'event' }>,
+    frame: Exclude<SessionFollowFrame, { type: 'snapshot' }>,
   ): Promise<void> {
     await Promise.all([...(this.followConns.get(sessionId) ?? [])].map(conn => new Promise<void>((resolve) => {
       conn.feed({ kind: 'frame', value: frame, delivered: resolve })
@@ -383,11 +362,7 @@ export class FakeApiClient {
     if (!result.ok) return result
     return {
       ok: true,
-      value: {
-        ...result.value,
-        records: result.value.records
-          .filter(record => historyRecordLastSeq(record) <= request.throughSeq),
-      },
+      value: pageThrough(result.value, request.throughSeq),
     }
   }
 
@@ -408,23 +383,7 @@ export class FakeApiClient {
       })
       if (!response.ok) throw response.error
       const page = response.value
-      const tail = page.records.at(-1)
-      const cursor = this.followCursor ?? (tail === undefined ? -1 : historyRecordLastSeq(tail))
-      yield {
-        type: 'snapshot',
-        header: {
-          version: 0,
-          id: sessionId,
-          createdAt: 0,
-          ...(request.address.kind === 'subagent'
-            ? { origin: 'subagent' as const, parentSession: request.address.parentSessionId }
-            : {}),
-        },
-        cursor,
-        records: page.records.filter(record => historyRecordLastSeq(record) <= cursor),
-        hasMore: page.hasMore,
-        projections: page.projections ?? { asOfSeq: cursor, values: {} },
-      }
+      yield followSnapshot(page, request, this.followCursor, this.assistantStreamBaseline)
       yield* stream.values
     } finally {
       stream.dispose()

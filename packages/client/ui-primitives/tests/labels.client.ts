@@ -11,7 +11,6 @@ import type {
 export const markdownLabels: MarkdownLabels = {
   code: { copyLabel: '复制', copiedLabel: '复制成功' },
   footnotes: 'Footnotes',
-  image: { open: '查看大图', close: '关闭图片预览' },
 }
 
 export const diffBlockLabels: DiffBlockLabels = {
