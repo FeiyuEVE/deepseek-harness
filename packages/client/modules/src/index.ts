@@ -34,6 +34,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Entry } from '@deepseek-ai/cordis-plugin-loader'
 import type { IndexInjection } from '@deepseek-ai/dsh-host-webserver'
 import { exactPackageSpecifier, parseDshClient, stripClientSuffix } from './client/manifest.ts'
+import { ERROR_GUARD_ROW } from './error-guard.ts'
 import type { WebBootBatch, WebBootBatchPhase, WebBootEntry, WebBootGraph } from './client/manifest.ts'
 
 export { stripClientSuffix } from './client/manifest.ts'
@@ -543,6 +544,10 @@ export class ClientModuleRegistry extends Service {
     if (ctx.get('webServer') === undefined) ctx.inject(['webServer'], registerWebCarrier)
     else registerWebCarrier(ctx)
     ctx.on('webserver/index-inject', (table) => {
+      // The catch-all error guard is the outermost head row: the first script
+      // in the document, before the module facade and every bundle, so a
+      // crash in any of them is still observable and reportable.
+      table.unshift(ERROR_GUARD_ROW)
       table.push(...bootInjections(this.composed))
     })
   }
