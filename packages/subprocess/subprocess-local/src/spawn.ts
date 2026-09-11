@@ -80,13 +80,44 @@ export interface LocalSubprocessHandle extends SubprocessHandle {
 }
 
 /**
- * Liveness-poll cadence for tree-exit waits. The timer stays ref'd: an
+ * Probes kept at the fast cadence, covering the exit of an ordinary command.
+ * Twenty probes at 15ms spend the first 300ms of a wait at the original rate.
+ */
+const TREE_EXIT_POLL_FAST_PROBES = 20
+/** Interval of the fast cadence, unchanged from the fixed poll this replaces. */
+const TREE_EXIT_POLL_INITIAL_MS = 15
+/** First interval after the fast cadence, doubled once per later probe. */
+const TREE_EXIT_POLL_BACKOFF_BASE_MS = 30
+/** Upper bound on the interval of a long-lived wait. */
+const TREE_EXIT_POLL_MAX_MS = 1_000
+
+/**
+ * Interval before the next tree-liveness probe. The wait keeps the fast
+ * cadence while a direct child is expected to exit, then doubles the
+ * interval up to {@link TREE_EXIT_POLL_MAX_MS}. A group that outlives its
+ * direct child is an orphan tail: it can persist for hours, and each probe
+ * on Linux reads the whole process table to tell a live member from a
+ * zombie, so an unbounded fast poll would charge a CPU core for as long as
+ * the tail lives.
+ * @param probe - zero-based index of the probes already performed.
+ * @returns Milliseconds to wait before the next probe.
+ */
+export function treeExitPollDelayMs(probe: number): number {
+  if (probe < TREE_EXIT_POLL_FAST_PROBES) return TREE_EXIT_POLL_INITIAL_MS
+  const doublings = Math.min(probe - TREE_EXIT_POLL_FAST_PROBES, 6)
+  return Math.min(TREE_EXIT_POLL_MAX_MS, TREE_EXIT_POLL_BACKOFF_BASE_MS * 2 ** doublings)
+}
+
+/**
+ * Wait until a liveness probe reports absence. The timer stays ref'd: an
  * awaited teardown must keep the event loop alive until the tree really
  * exits, or the parent can exit while claiming quiescence and orphan the
  * survivors it promised to reap.
+ * @param alive - Probe deciding whether another wait is required.
  */
-function sleepTick(): Promise<void> {
-  return sleepMs(15)
+async function waitForTreeExit(alive: () => boolean): Promise<void> {
+  let probe = 0
+  while (alive()) await sleepMs(treeExitPollDelayMs(probe++))
 }
 
 let spillCounter = 0
@@ -442,7 +473,7 @@ function fallbackOwner(
          protects direct internal re-entry after signal() observed absence. */
       if (stopped) return
       observation ??= (async () => {
-        while (alive()) await sleepTick()
+        await waitForTreeExit(alive)
         stopped = true
       })()
       await observation
