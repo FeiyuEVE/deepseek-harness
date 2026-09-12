@@ -46,25 +46,24 @@ interface ResourceRecord {
 export const RESOURCE_SCHEME = 'dsh-resource'
 
 /**
- * The protocol key of one address: the host of a `dsh-resource://` URL, as the
- * URL parser reads it (lower-cased). Any other string — another scheme, or one
- * the URL parser rejects — names no protocol and is treated like an address
- * whose protocol has no provider.
+ * The protocol key of one address: the authority of a `dsh-resource://`
+ * address, lower-cased. The authority is read as a string, deliberately
+ * without the URL parser: engines that treat a non-special scheme as
+ * cannot-be-a-base report an empty `hostname` for `dsh-resource://file/…`
+ * (measured on a Huawei NOH-AL10, Android 12 WebView, UA `Chrome/114`), which
+ * would leave every address with no provider. Any other string — another
+ * scheme, or no authority at all — names no protocol and is treated like an
+ * address whose protocol has no provider.
  * @param address - the full address.
  * @returns the protocol key, or `undefined` when the address is not a resource address.
  */
 export function protocolOf(address: string): string | undefined {
-  let parsed: URL
-  try {
-    parsed = new URL(address)
-  } catch {
-    // The URL parser rejects strings without a scheme (`/a/b.txt`, `''`);
-    // nothing else throws here, and an unparseable address is simply not ours.
-    return undefined
-  }
-  if (parsed.protocol !== `${RESOURCE_SCHEME}:`) return undefined
-  // A non-special scheme's host is opaque to the URL parser and keeps its case.
-  return parsed.hostname === '' ? undefined : parsed.hostname.toLowerCase()
+  const prefix = `${RESOURCE_SCHEME}://`
+  if (address.slice(0, prefix.length).toLowerCase() !== prefix) return undefined
+  const authority = address.slice(prefix.length)
+  const cut = authority.search(/[/?#]/u)
+  const host = cut === -1 ? authority : authority.slice(0, cut)
+  return host === '' ? undefined : host.toLowerCase()
 }
 
 function idle(status: 'none' | 'loading'): ResourceSnapshot<unknown> {

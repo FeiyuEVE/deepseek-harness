@@ -92,6 +92,23 @@ function bench() {
   return { ctx, registry, ...scripted, snapshot }
 }
 
+/**
+ * The `URL` face of an engine that parses a non-special scheme as
+ * cannot-be-a-base: the parse succeeds, the scheme survives, and there is no
+ * host to read. The measured Huawei NOH-AL10 / Android 12 WebView behavior
+ * (`Chrome/114` UA) that leaves every `dsh-resource://file/…` address hostless.
+ */
+class OpaquePathUrl {
+  readonly protocol: string
+  readonly hostname = ''
+
+  constructor(address: string) {
+    const separator = address.indexOf(':')
+    if (separator === -1) throw new TypeError(`Invalid URL: ${address}`)
+    this.protocol = `${address.slice(0, separator).toLowerCase()}:`
+  }
+}
+
 describe('protocolOf', () => {
   it('reads the dsh-resource host, lower-cased, and reports none for any other address', () => {
     expect(protocolOf('dsh-resource://file/session/s1/home/ys/b.txt')).toBe('file')
@@ -103,6 +120,29 @@ describe('protocolOf', () => {
     expect(protocolOf('dsh-resource:///no-host')).toBeUndefined()
     expect(protocolOf('/a/b.txt')).toBeUndefined()
     expect(protocolOf('')).toBeUndefined()
+  })
+
+  it('names the protocol without the URL parser, so a hostless non-special-scheme parse still names it', () => {
+    const address = 'dsh-resource://file/session/s1/home/ys/b.txt'
+    vi.stubGlobal('URL', OpaquePathUrl)
+    try {
+      // The stub is the failing kernel rather than a broken parser: the parse
+      // succeeds with the right scheme and only the host is missing, so any
+      // hostname read names no protocol at all.
+      expect(new URL(address).protocol).toBe(`${RESOURCE_SCHEME}:`)
+      expect(new URL(address).hostname).toBe('')
+      expect(protocolOf(address)).toBe('file')
+      expect(protocolOf('DSH-RESOURCE://File/session/s1/a')).toBe('file')
+    } finally {
+      vi.unstubAllGlobals()
+    }
+    // The real parser is back, and both it and the string read name the host.
+    expect(new URL(address).hostname).toBe('file')
+    expect(protocolOf(address)).toBe('file')
+    // An authority with no path, query, or fragment is still the host.
+    expect(protocolOf(`${RESOURCE_SCHEME}://file`)).toBe('file')
+    expect(protocolOf('sidebar://guide')).toBeUndefined()
+    expect(protocolOf(`${RESOURCE_SCHEME}:///no-host`)).toBeUndefined()
   })
 })
 
